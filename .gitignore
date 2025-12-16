@@ -31,3 +31,6 @@ postgres_data/
 
 # Docker
 .colima
+
+# Local Testing 
+docker-compose.yml
