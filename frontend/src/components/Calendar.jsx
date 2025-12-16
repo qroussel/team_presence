@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWeekend } from 'date-fns';
+import { isFrenchHoliday } from '../utils/holidays';
 import ContextMenu from './ContextMenu';
 
 const Calendar = ({ users, currentUser }) => {
@@ -164,7 +165,7 @@ const Calendar = ({ users, currentUser }) => {
 
       daysToUpdate.forEach(d => {
         // Exclude weekends from bulk change
-        if (!isWeekend(d)) {
+        if (!isWeekend(d) && !isFrenchHoliday(d)) {
           updatePresence(currentUser.id, d, nextStatus, nextStatus);
         }
       });
@@ -282,10 +283,12 @@ const Calendar = ({ users, currentUser }) => {
           const statusPM = myPresence?.status_pm || '';
           const selected = isDaySelected(day);
 
+          const isHoliday = isFrenchHoliday(day);
+
           return (
             <div
               key={day.toString()}
-              className={`calendar-cell ${isWeekend(day) ? 'weekend-cell' : ''}`}
+              className={`calendar-cell ${isWeekend(day) || isHoliday ? 'weekend-cell' : ''}`}
               style={{
                 opacity: isSameMonth(day, monthStart) ? 1 : 0.5,
                 cursor: currentUser ? 'pointer' : 'default',

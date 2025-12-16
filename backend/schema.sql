@@ -15,3 +15,21 @@ CREATE TABLE IF NOT EXISTS presence (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, date)
 );
+
+CREATE TABLE IF NOT EXISTS teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS team_members (
+    id SERIAL PRIMARY KEY,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    productivity INTEGER DEFAULT 100, -- Percentage 0-100
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(team_id, user_id)
+);
+
+-- Seed default team if not exists (This is a bit hacky in schema.sql but useful for dev)
+INSERT INTO teams (name) VALUES ('Engineering') ON CONFLICT (name) DO NOTHING;

@@ -1,16 +1,25 @@
 import React, { useState, useEffect } from 'react'
 import Calendar from './components/Calendar'
 import TeamCalendar from './components/TeamCalendar'
+import { ThemeProvider } from './context/ThemeContext'
+import ThemeSwitcher from './components/ThemeSwitcher'
 
-function App() {
+import AddTeamModal from './components/AddTeamModal'
+import UserSettingsModal from './components/UserSettingsModal'
+
+function AppContent() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState(null)
   const [viewMode, setViewMode] = useState('personal') // 'personal' | 'team'
+  const [settingsUser, setSettingsUser] = useState(null) // User currently being edited in settings
+  const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false)
 
   // Simple form state for adding a user
   const [newUserName, setNewUserName] = useState('')
   const [newUserEmail, setNewUserEmail] = useState('')
+
+  const [teams, setTeams] = useState([])
 
   const fetchUsers = async () => {
     try {
@@ -28,9 +37,37 @@ function App() {
     }
   }
 
+  const fetchTeams = async () => {
+    try {
+      const res = await fetch('/api/teams')
+      if (res.ok) {
+        const data = await res.json()
+        setTeams(data || [])
+      }
+    } catch (e) {
+      console.error("Failed to fetch teams", e)
+    }
+  }
+
   useEffect(() => {
     fetchUsers()
+    fetchTeams()
   }, [])
+
+  const handleDeleteUser = async (userId) => {
+    try {
+      const res = await fetch(`/api/users?id=${userId}`, { method: 'DELETE' })
+      if (res.ok) {
+        // Refresh users, clear selection if needed
+        await fetchUsers()
+        if (selectedUserId === userId) {
+          setSelectedUserId(null)
+        }
+      }
+    } catch (e) {
+      console.error("Failed to delete user", e)
+    }
+  }
 
   const handleAddUser = async (e) => {
     e.preventDefault()
@@ -47,6 +84,27 @@ function App() {
         })
       })
       if (res.ok) {
+        // Also add to default 'Engineering' team if it exists
+        // Ideally backend does this, but for now we can do it here or let user manage it.
+        // The prompt says "By default a user have 1 team".
+        // Let's rely on manual assignment for now or handle it later.
+        // Actually, if I create a user, I should probably add them to the first team found?
+        // Let's just create user for now.
+        const newUser = await res.json()
+
+        // Auto-add to first team (Engineering)
+        if (teams.length > 0) {
+          await fetch('/api/team_members', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              team_id: teams[0].id,
+              user_id: newUser.id,
+              productivity: 100
+            })
+          })
+        }
+
         setNewUserName('')
         setNewUserEmail('')
         fetchUsers()
@@ -119,16 +177,37 @@ function App() {
                       cursor: 'pointer',
                       padding: '0.5rem',
                       borderRadius: '0.5rem',
-                      backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                      transition: 'background-color 0.2s'
+                      backgroundColor: isSelected ? 'var(--selected-item-bg)' : 'transparent',
+                      transition: 'background-color 0.2s',
+                      position: 'relative',
+                      group: 'true' // hint for hover logic if using css, but we'll specific inline style
                     }}
+                    onMouseEnter={e => e.currentTarget.querySelector('.settings-icon').style.opacity = '1'}
+                    onMouseLeave={e => e.currentTarget.querySelector('.settings-icon').style.opacity = '0'}
                   >
                     <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>
                       {u.name.charAt(0).toUpperCase()}
                     </div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 500 }}>{u.name}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{u.email}</div>
+                    </div>
+                    <div
+                      className="settings-icon"
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent selection
+                        setSettingsUser(u);
+                      }}
+                      style={{
+                        opacity: 0,
+                        transition: 'opacity 0.2s',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        background: 'rgba(255,255,255,0.1)'
+                      }}
+                      title="Settings"
+                    >
+                      ⚙️
                     </div>
                   </div>
                 )
@@ -160,10 +239,52 @@ function App() {
 
         </div>
       ) : (
-        <TeamCalendar users={users} />
+        <TeamCalendar
+          teams={teams}
+          allUsers={users}
+          onAddTeamClick={() => setIsAddTeamModalOpen(true)}
+        />
       )}
+
+      <UserSettingsModal
+        user={settingsUser}
+        isOpen={!!settingsUser}
+        onClose={() => setSettingsUser(null)}
+        onDeleteUser={handleDeleteUser}
+        teams={teams}
+      />
+
+      <AddTeamModal
+        isOpen={isAddTeamModalOpen}
+        onClose={() => setIsAddTeamModalOpen(false)}
+        users={users}
+        onTeamCreated={() => {
+          fetchTeams();
+        }}
+      />
+
+      <footer style={{
+        marginTop: '3rem',
+        padding: '2rem',
+        borderTop: '1px solid var(--glass-border)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        color: 'var(--text-secondary)'
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ fontSize: '0.9rem' }}>Application Settings</div>
+          <ThemeSwitcher />
+        </div>
+      </footer>
     </div>
   )
 }
 
-export default App
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  )
+}

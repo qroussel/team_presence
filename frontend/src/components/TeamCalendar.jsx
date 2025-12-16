@@ -1,15 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay, parseISO } from 'date-fns';
+import { isFrenchHoliday } from '../utils/holidays';
 
-const TeamCalendar = ({ users }) => {
+const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
     // Default to current month
     const [startDate, setStartDate] = useState(startOfMonth(new Date()));
     const [endDate, setEndDate] = useState(endOfMonth(new Date()));
 
+    const [selectedTeamId, setSelectedTeamId] = useState(null);
+    const [teamMembers, setTeamMembers] = useState([]);
     const [presenceData, setPresenceData] = useState([]);
     const [loading, setLoading] = useState(false);
     const scrollContainerRef = useRef(null);
 
+    // Initial selection
+    useEffect(() => {
+        if (!selectedTeamId && teams.length > 0) {
+            setSelectedTeamId(teams[0].id);
+        }
+    }, [teams]);
+
+    // Fetch team members when team changes
+    useEffect(() => {
+        const fetchMembers = async () => {
+            if (!selectedTeamId) return;
+            try {
+                const res = await fetch(`/api/team_members?team_id=${selectedTeamId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setTeamMembers(data || []);
+                }
+            } catch (e) {
+                console.error("Failed to fetch team members", e);
+            }
+        };
+        fetchMembers();
+    }, [selectedTeamId]);
+
+    // Fetch presence
     useEffect(() => {
         const fetchPresence = async () => {
             if (!startDate || !endDate) return;
@@ -76,8 +104,6 @@ const TeamCalendar = ({ users }) => {
         const date = parseISO(e.target.value);
         if (date.toString() !== 'Invalid Date') {
             setStartDate(date);
-            // Optional: Auto-adjust end date if start > end?
-            // For now, let user manage it, but prevent crash in days calculation
         }
     };
 
@@ -88,9 +114,78 @@ const TeamCalendar = ({ users }) => {
         }
     };
 
+    const handleCreateTeam = async () => {
+        const name = prompt("Enter team name:");
+        if (!name) return;
+        try {
+            const res = await fetch('/api/teams', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            if (res.ok) {
+                window.location.reload(); // Simple reload to refresh everything
+            }
+        } catch (e) {
+            alert("Failed to create team");
+        }
+    };
+
+    // User selection for adding to team
+    const handleAddMember = async () => {
+        const email = prompt("Enter user email to add to this team:");
+        if (!email) return;
+
+        const user = allUsers.find(u => u.email === email);
+        if (!user) {
+            alert("User not found!");
+            return;
+        }
+
+        const ratioStr = prompt("Enter productivity ratio (0-100):", "100");
+        const ratio = parseInt(ratioStr);
+        if (isNaN(ratio) || ratio < 0 || ratio > 100) {
+            alert("Invalid ratio");
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/team_members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team_id: selectedTeamId,
+                    user_id: user.id,
+                    productivity: ratio
+                })
+            });
+            if (res.ok) {
+                // Refresh members
+                const res2 = await fetch(`/api/team_members?team_id=${selectedTeamId}`);
+                const data = await res2.json();
+                setTeamMembers(data || []);
+            }
+        } catch (e) {
+            alert("Failed to add member");
+        }
+    };
+
     return (
         <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+
+                {/* Team Selector */}
+                <select
+                    value={selectedTeamId || ''}
+                    onChange={e => setSelectedTeamId(Number(e.target.value))}
+                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
+                >
+                    {teams.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                </select>
+                <button onClick={onAddTeamClick} style={{ padding: '0.5rem', cursor: 'pointer' }}>+ Team</button>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>From:</label>
                     <input
@@ -109,11 +204,7 @@ const TeamCalendar = ({ users }) => {
                         style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
                     />
                 </div>
-                {(startDate > endDate) && (
-                    <span style={{ color: '#ef4444', fontSize: '0.9rem' }}>Start date must be before end date</span>
-                )}
 
-                {/* Total Working Days Display */}
                 <div style={{
                     marginLeft: 'auto',
                     padding: '0.5rem 1rem',
@@ -126,10 +217,10 @@ const TeamCalendar = ({ users }) => {
                 }}>
                     Team Working Days: {
                         days.reduce((total, day) => {
-                            if (isWeekend(day)) return total;
+                            if (isWeekend(day) || isFrenchHoliday(day)) return total;
 
-                            const daySum = users.reduce((userTotal, user) => {
-                                const presence = getPresenceForUserAndDay(user.id, day);
+                            const daySum = teamMembers.reduce((userTotal, member) => {
+                                const presence = getPresenceForUserAndDay(member.user_id, day);
                                 let dailyScore = 0;
 
                                 // AM
@@ -140,11 +231,13 @@ const TeamCalendar = ({ users }) => {
                                 const statusPM = presence?.status_pm;
                                 if (statusPM !== 'off') dailyScore += 0.5;
 
-                                return userTotal + dailyScore;
+                                // Apply productivity ratio
+                                const ratio = member.productivity / 100.0;
+                                return userTotal + (dailyScore * ratio);
                             }, 0);
 
                             return total + daySum;
-                        }, 0)
+                        }, 0).toFixed(1)
                     }
                 </div>
             </div>
@@ -152,30 +245,35 @@ const TeamCalendar = ({ users }) => {
             <div style={{ display: 'flex' }}>
                 {/* Fixed Sidebar: User Names */}
                 <div style={{ flex: '0 0 200px', borderRight: '1px solid var(--glass-border)' }}>
-                    <div style={{ height: '50px', display: 'flex', alignItems: 'center', fontWeight: 'bold', padding: '0 0.5rem', background: 'var(--bg-secondary)' }}>
-                        Team Member
+                    <div style={{ height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 'bold', padding: '0 0.5rem', background: 'var(--bg-secondary)' }}>
+                        <span>Members</span>
+                        <button onClick={handleAddMember} style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>+</button>
                     </div>
-                    {users.map(user => (
-                        <div key={user.id} style={{
+                    {teamMembers.map(member => (
+                        <div key={member.user_id} style={{
                             height: '40px',
                             display: 'flex',
                             alignItems: 'center',
+                            justifyContent: 'space-between',
                             gap: '0.5rem',
                             padding: '0 0.5rem',
                             background: 'var(--bg-secondary)',
-                            borderBottom: '1px solid transparent' // Keep alignment with grid gap
+                            borderBottom: '1px solid transparent'
                         }}>
-                            <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                                {user.name.charAt(0).toUpperCase()}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 'bold', flexShrink: 0 }}>
+                                    {member.user_name ? member.user_name.charAt(0).toUpperCase() : '?'}
+                                </div>
+                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.user_name}</span>
                             </div>
-                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name}</span>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{member.productivity}%</span>
                         </div>
                     ))}
                 </div>
 
                 {/* Scrollable Grid Area */}
                 <div ref={scrollContainerRef} style={{ flex: 1, overflowX: 'auto' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${days.length}, minmax(40px, 1fr))`, gap: '1px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: days.map(d => isWeekend(d) ? 'minmax(20px, 0.5fr)' : 'minmax(40px, 1fr)').join(' '), gap: '1px' }}>
                         {/* Header Row: Days */}
                         {days.map(day => (
                             <div key={day.toString()} style={{
@@ -185,7 +283,7 @@ const TeamCalendar = ({ users }) => {
                                 flexDirection: 'column',
                                 justifyContent: 'center',
                                 fontWeight: 'bold',
-                                backgroundColor: isWeekend(day) ? 'rgba(255,255,255,0.05)' : 'var(--bg-secondary)',
+                                backgroundColor: isWeekend(day) || isFrenchHoliday(day) ? 'var(--header-weekend-bg)' : 'var(--bg-secondary)',
                                 color: isSameDay(day, new Date()) ? 'var(--accent)' : 'inherit'
                             }}>
                                 <div>{format(day, 'd')}</div>
@@ -194,18 +292,18 @@ const TeamCalendar = ({ users }) => {
                         ))}
 
                         {/* Presence Grid */}
-                        {users.map(user => (
-                            <React.Fragment key={user.id}>
+                        {teamMembers.map(member => (
+                            <React.Fragment key={member.user_id}>
                                 {days.map(day => {
-                                    const presence = getPresenceForUserAndDay(user.id, day);
+                                    const presence = getPresenceForUserAndDay(member.user_id, day);
                                     const statusAM = presence?.status_am || '';
                                     const statusPM = presence?.status_pm || '';
 
                                     return (
-                                        <div key={`${user.id}-${day}`} style={{
+                                        <div key={`${member.user_id}-${day}`} style={{
                                             height: '40px',
-                                            backgroundColor: isWeekend(day) ? 'rgba(255,255,255,0.02)' : 'transparent',
-                                            border: '1px solid rgba(255,255,255,0.05)',
+                                            backgroundColor: isWeekend(day) || isFrenchHoliday(day) ? 'var(--weekend-bg)' : 'transparent',
+                                            border: '1px solid var(--grid-border)',
                                             ...getBackgroundStyle(statusAM, statusPM)
                                         }}>
                                         </div>

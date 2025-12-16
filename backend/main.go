@@ -3,6 +3,7 @@ package main
 import (
 	"backend/internal/store"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -54,6 +55,22 @@ func main() {
 				return
 			}
 			json.NewEncoder(w).Encode(u)
+		} else if r.Method == http.MethodDelete {
+			idStr := r.URL.Query().Get("id")
+			if idStr == "" {
+				http.Error(w, "Missing id", http.StatusBadRequest)
+				return
+			}
+			var id int
+			if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+				http.Error(w, "Invalid id", http.StatusBadRequest)
+				return
+			}
+			if err := s.DeleteUser(r.Context(), id); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 		}
 	})
 
@@ -84,6 +101,98 @@ func main() {
 				return
 			}
 			json.NewEncoder(w).Encode(p)
+		}
+	})
+
+	http.HandleFunc("/api/teams", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			teams, err := s.GetTeams(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(teams)
+		} else if r.Method == http.MethodPost {
+			var t store.Team
+			if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			t, err := s.CreateTeam(r.Context(), t.Name)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(t)
+		}
+	})
+
+	http.HandleFunc("/api/team_members", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			teamIDStr := r.URL.Query().Get("team_id")
+			userIDStr := r.URL.Query().Get("user_id")
+
+			if teamIDStr != "" {
+				var teamID int
+				if _, err := fmt.Sscanf(teamIDStr, "%d", &teamID); err != nil {
+					http.Error(w, "Invalid team_id", http.StatusBadRequest)
+					return
+				}
+				members, err := s.GetTeamMembers(r.Context(), teamID)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				json.NewEncoder(w).Encode(members)
+			} else if userIDStr != "" {
+				var userID int
+				if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil {
+					http.Error(w, "Invalid user_id", http.StatusBadRequest)
+					return
+				}
+				members, err := s.GetUserTeams(r.Context(), userID)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				json.NewEncoder(w).Encode(members)
+			} else {
+				http.Error(w, "Missing team_id or user_id", http.StatusBadRequest)
+				return
+			}
+		} else if r.Method == http.MethodPost {
+			var tm store.TeamMember
+			if err := json.NewDecoder(r.Body).Decode(&tm); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			tm, err := s.AddUserToTeam(r.Context(), tm.TeamID, tm.UserID, tm.Productivity)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(tm)
+		} else if r.Method == http.MethodDelete {
+			teamIDStr := r.URL.Query().Get("team_id")
+			userIDStr := r.URL.Query().Get("user_id")
+			if teamIDStr == "" || userIDStr == "" {
+				http.Error(w, "Missing team_id or user_id", http.StatusBadRequest)
+				return
+			}
+			var teamID, userID int
+			if _, err := fmt.Sscanf(teamIDStr, "%d", &teamID); err != nil {
+				http.Error(w, "Invalid team_id", http.StatusBadRequest)
+				return
+			}
+			if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil {
+				http.Error(w, "Invalid user_id", http.StatusBadRequest)
+				return
+			}
+			if err := s.RemoveUserFromTeam(r.Context(), teamID, userID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 		}
 	})
 
