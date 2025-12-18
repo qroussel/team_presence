@@ -36,7 +36,7 @@ fi
 # 2. Start Backend
 echo -e "${GREEN}[2/3] Starting Backend (Go)...${NC}"
 cd backend
-go run main.go &
+DATABASE_URL="postgres://$DB_USER:$DB_PASS@localhost:$DB_PORT/presence_db?sslmode=disable" go run main.go &
 BACKEND_PID=$!
 cd ..
 
