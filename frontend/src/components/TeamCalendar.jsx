@@ -244,7 +244,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
 
             <div style={{ display: 'flex' }}>
                 {/* Fixed Sidebar: User Names */}
-                <div style={{ flex: '0 0 200px', borderRight: '1px solid var(--glass-border)' }}>
+                <div style={{ flex: '0 0 200px', borderRight: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                     <div style={{ height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 'bold', padding: '0 0.5rem', background: 'var(--bg-secondary)' }}>
                         <span>Members</span>
                         <button onClick={handleAddMember} style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>+</button>

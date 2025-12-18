@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Calendar from './components/Calendar'
 import TeamCalendar from './components/TeamCalendar'
+import AdminPanel from './components/AdminPanel' // Import AdminPanel
 import { ThemeProvider } from './context/ThemeContext'
 import ThemeSwitcher from './components/ThemeSwitcher'
 
@@ -11,7 +12,7 @@ function AppContent() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState(null)
-  const [viewMode, setViewMode] = useState('personal') // 'personal' | 'team'
+  const [viewMode, setViewMode] = useState('personal') // 'personal' | 'team' | 'admin'
   const [settingsUser, setSettingsUser] = useState(null) // User currently being edited in settings
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false)
 
@@ -115,6 +116,18 @@ function AppContent() {
   }
 
   const currentUser = users.find(u => u.id === selectedUserId)
+
+  if (viewMode === 'admin') {
+    return (
+      <div>
+        <AdminPanel onBack={() => {
+          setViewMode('personal')
+          fetchTeams() // Refresh teams when returning
+          fetchUsers()
+        }} />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -275,6 +288,14 @@ function AppContent() {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
           <div style={{ fontSize: '0.9rem' }}>Application Settings</div>
           <ThemeSwitcher />
+
+          {/* Discrete Admin Access */}
+          <button
+            onClick={() => setViewMode('admin')}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', opacity: 0.5, fontSize: '0.8rem', cursor: 'pointer', marginTop: '1rem' }}
+          >
+            Admin Panel
+          </button>
         </div>
       </footer>
     </div>

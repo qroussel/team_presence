@@ -21,6 +21,12 @@
   --selected-item-bg: rgba(255, 255, 255, 0.1);
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 [data-theme="light"] {
   --bg-primary: #f8fafc;
   --bg-secondary: #e2e8f0;
