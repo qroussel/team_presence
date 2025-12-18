@@ -15,7 +15,12 @@ import (
 // VALIDATION TESTS
 // ============================================================================
 
-func TestCreateUser_Validation(t *testing.T) {
+const (
+	MsgValueTooLong         = "value too long"
+	MsgForeignKeyConstraint = "foreign key constraint"
+)
+
+func TestCreateUserValidation(t *testing.T) {
 	tests := []struct {
 		name    string
 		params  CreateUserParams
@@ -70,7 +75,7 @@ func TestCreateUser_Validation(t *testing.T) {
 				Email: "longname@example.com",
 			},
 			wantErr: true,
-			errMsg:  "value too long",
+			errMsg:  MsgValueTooLong,
 		},
 		{
 			name: "very long email (500 chars) - should fail",
@@ -106,7 +111,7 @@ func TestCreateUser_Validation(t *testing.T) {
 	}
 }
 
-func TestCreateUser_UniqueEmail(t *testing.T) {
+func TestCreateUserUniqueEmail(t *testing.T) {
 	s, ctx := newTestStoreWithTx(t)
 
 	email := fmt.Sprintf("duplicate_%s@example.com", testutil.RandomString(5))
@@ -129,7 +134,7 @@ func TestCreateUser_UniqueEmail(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate key value")
 }
 
-func TestUserOperations_InvalidID(t *testing.T) {
+func TestUserOperationsInvalidID(t *testing.T) {
 	s, ctx := newTestStoreWithTx(t)
 
 	tests := []struct {
@@ -172,7 +177,7 @@ func TestUserOperations_InvalidID(t *testing.T) {
 	}
 }
 
-func TestCreateTeam_Validation(t *testing.T) {
+func TestCreateTeamValidation(t *testing.T) {
 	tests := []struct {
 		name     string
 		teamName string
@@ -203,7 +208,7 @@ func TestCreateTeam_Validation(t *testing.T) {
 			name:     "very long team name - should fail",
 			teamName: testutil.RandomString(500),
 			wantErr:  true,
-			errMsg:   "value too long",
+			errMsg:   MsgValueTooLong,
 		},
 	}
 
@@ -231,7 +236,7 @@ func TestCreateTeam_Validation(t *testing.T) {
 	}
 }
 
-func TestCreateTeam_UniqueName(t *testing.T) {
+func TestCreateTeamUniqueName(t *testing.T) {
 	s, ctx := newTestStoreWithTx(t)
 
 	teamName := "Duplicate Team " + testutil.RandomString(5)
@@ -246,7 +251,7 @@ func TestCreateTeam_UniqueName(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate key value")
 }
 
-func TestTeamOperations_InvalidID(t *testing.T) {
+func TestTeamOperationsInvalidID(t *testing.T) {
 	s, ctx := newTestStoreWithTx(t)
 
 	tests := []struct {
@@ -272,63 +277,59 @@ func TestTeamOperations_InvalidID(t *testing.T) {
 	}
 }
 
-func TestAddUserToTeam_Validation(t *testing.T) {
+func TestAddUserToTeamValidationSuccess(t *testing.T) {
 	tests := []struct {
 		name         string
-		teamID       int32
-		userID       int32
 		productivity int32
-		wantErr      bool
-		errMsg       string
-		useValidIDs  bool
+	}{
+		{name: "valid productivity 100", productivity: 100},
+		{name: "valid productivity 0", productivity: 0},
+		{name: "valid productivity 50", productivity: 50},
+		{name: "negative productivity", productivity: -10}, // Assuming store allows it or check constraint isn't active/tested here
+		{name: "productivity over 100", productivity: 150},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, ctx := newTestStoreWithTx(t)
+			validUser, err := s.CreateUser(ctx, CreateUserParams{
+				Name:  "Valid User",
+				Email: fmt.Sprintf("valid_%s@example.com", testutil.RandomString(5)),
+			})
+			require.NoError(t, err)
+
+			validTeam, err := s.CreateTeam(ctx, "Valid Team "+testutil.RandomString(5))
+			require.NoError(t, err)
+
+			params := AddUserToTeamParams{
+				TeamID:       validTeam.ID,
+				UserID:       validUser.ID,
+				Productivity: pgtype.Int4{Int32: tt.productivity, Valid: true},
+			}
+			_, err = s.AddUserToTeam(ctx, params)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestAddUserToTeamValidationFailure(t *testing.T) {
+	tests := []struct {
+		name   string
+		teamID int32
+		userID int32
+		errMsg string
 	}{
 		{
-			name:         "valid productivity 100",
-			useValidIDs:  true,
-			productivity: 100,
-			wantErr:      false,
+			name:   "non-existent team",
+			teamID: 999999,
+			userID: 0, // Will use valid user ID
+			errMsg: MsgForeignKeyConstraint,
 		},
 		{
-			name:         "valid productivity 0",
-			useValidIDs:  true,
-			productivity: 0,
-			wantErr:      false,
-		},
-		{
-			name:         "valid productivity 50",
-			useValidIDs:  true,
-			productivity: 50,
-			wantErr:      false,
-		},
-		{
-			name:         "negative productivity",
-			useValidIDs:  true,
-			productivity: -10,
-			wantErr:      false,
-		},
-		{
-			name:         "productivity over 100",
-			useValidIDs:  true,
-			productivity: 150,
-			wantErr:      false,
-		},
-		{
-			name:         "non-existent team",
-			teamID:       999999,
-			userID:       0, // Will use valid user ID
-			useValidIDs:  false,
-			productivity: 100,
-			wantErr:      true,
-			errMsg:       "foreign key constraint",
-		},
-		{
-			name:         "non-existent user",
-			teamID:       0, // Will use valid team ID
-			userID:       999999,
-			useValidIDs:  false,
-			productivity: 100,
-			wantErr:      true,
-			errMsg:       "foreign key constraint",
+			name:   "non-existent user",
+			teamID: 0, // Will use valid team ID
+			userID: 999999,
+			errMsg: MsgForeignKeyConstraint,
 		},
 	}
 
@@ -336,62 +337,44 @@ func TestAddUserToTeam_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s, ctx := newTestStoreWithTx(t)
 
-			// Setup valid user and team if needed
-			var validUserID, validTeamID int32
-			if tt.useValidIDs || tt.userID == 0 {
-				validUser, err := s.CreateUser(ctx, CreateUserParams{
+			var userID, teamID int32
+			if tt.userID == 0 {
+				user, err := s.CreateUser(ctx, CreateUserParams{
 					Name:  "Valid User",
 					Email: fmt.Sprintf("valid_%s@example.com", testutil.RandomString(5)),
 				})
 				require.NoError(t, err)
-				validUserID = validUser.ID
-			}
-			if tt.useValidIDs || tt.teamID == 0 {
-				validTeam, err := s.CreateTeam(ctx, "Valid Team "+testutil.RandomString(5))
-				require.NoError(t, err)
-				validTeamID = validTeam.ID
+				userID = user.ID
+			} else {
+				userID = tt.userID
 			}
 
-			// Use test case IDs or valid IDs
-			teamID := tt.teamID
-			if teamID == 0 {
-				teamID = validTeamID
-			}
-			userID := tt.userID
-			if userID == 0 {
-				userID = validUserID
+			if tt.teamID == 0 {
+				team, err := s.CreateTeam(ctx, "Valid Team "+testutil.RandomString(5))
+				require.NoError(t, err)
+				teamID = team.ID
+			} else {
+				teamID = tt.teamID
 			}
 
 			params := AddUserToTeamParams{
 				TeamID:       teamID,
 				UserID:       userID,
-				Productivity: pgtype.Int4{Int32: tt.productivity, Valid: true},
+				Productivity: pgtype.Int4{Int32: 100, Valid: true},
 			}
 
 			_, err := s.AddUserToTeam(ctx, params)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-			} else {
-				require.NoError(t, err)
-			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errMsg)
 		})
 	}
 }
 
-func TestUpsertPresence_Validation(t *testing.T) {
-	// Parse strings to dates in loops or setup
-
+func TestUpsertPresenceValidationSuccess(t *testing.T) {
 	tests := []struct {
-		name     string
-		params   UpsertPresenceParams
-		dateStr  string // for parsing logic override helper
-		wantErr  bool
-		errMsg   string
-		validRes bool // if false, use invalid IDs/Dates intentionally
+		name    string
+		params  UpsertPresenceParams
+		dateStr string
 	}{
 		{
 			name: "valid presence",
@@ -399,8 +382,7 @@ func TestUpsertPresence_Validation(t *testing.T) {
 				StatusAm: pgtype.Text{String: "office", Valid: true},
 				StatusPm: pgtype.Text{String: "remote", Valid: true},
 			},
-			dateStr:  "2024-01-15",
-			validRes: true,
+			dateStr: "2024-01-15",
 		},
 		{
 			name: "valid with empty status",
@@ -408,68 +390,66 @@ func TestUpsertPresence_Validation(t *testing.T) {
 				StatusAm: pgtype.Text{String: "", Valid: true},
 				StatusPm: pgtype.Text{String: "", Valid: true},
 			},
-			dateStr:  "2024-01-16",
-			validRes: true,
+			dateStr: "2024-01-16",
 		},
 		{
-			name: "invalid date format",
-			// Handled by pre-parsing, so if we can't parse it, we handle it separately?
-			// But here we invoke UpsertPresence which takes pgtype.Date.
-			// So if we pass a valid struct it works.
-			// This test case was testing the store's handling of input?
-			// SQLC generated method takes specific types.
-			// If we can't construct pgtype.Date, we can't call it.
-			// So this test case is less relevant for "invalid format" unless we pass invalid pgtype.
-			// But pgtype.Date validates itself or Postgres does.
-			// Skip "invalid format" if it relies on parsing logic external to store.
-			validRes: true,
-			dateStr:  "2024-01-17",
-		},
-		{
-			name: "non-existent user",
-			params: UpsertPresenceParams{
-				UserID:   999999, // Invalid ID
-				StatusAm: pgtype.Text{String: "office", Valid: true},
-				StatusPm: pgtype.Text{String: "remote", Valid: true},
-			},
-			dateStr:  "2024-01-17",
-			wantErr:  true,
-			errMsg:   "foreign key constraint",
-			validRes: false, // Don't override UserID
+			name:    "invalid date format fallback",
+			params:  UpsertPresenceParams{}, // Defaults
+			dateStr: "2024-01-17",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, ctx := newTestStoreWithTx(t)
+			user, err := s.CreateUser(ctx, CreateUserParams{
+				Name:  "Presence User",
+				Email: fmt.Sprintf("presence_%s@example.com", testutil.RandomString(5)),
+			})
+			require.NoError(t, err)
 
 			p := tt.params
-
-			if tt.validRes {
-				validUser, err := s.CreateUser(ctx, CreateUserParams{
-					Name:  "Presence User",
-					Email: fmt.Sprintf("presence_%s@example.com", testutil.RandomString(5)),
-				})
-				require.NoError(t, err)
-				p.UserID = validUser.ID
-			}
-
+			p.UserID = user.ID
 			if tt.dateStr != "" {
 				d, err := time.Parse("2006-01-02", tt.dateStr)
 				if err == nil {
 					p.Date = d
 				}
 			}
+			_, err = s.UpsertPresence(ctx, p)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestUpsertPresenceValidationFailure(t *testing.T) {
+	tests := []struct {
+		name   string
+		params UpsertPresenceParams
+		errMsg string
+	}{
+		{
+			name: "non-existent user",
+			params: UpsertPresenceParams{
+				UserID:   999999,
+				StatusAm: pgtype.Text{String: "office", Valid: true},
+				StatusPm: pgtype.Text{String: "remote", Valid: true},
+			},
+			errMsg: MsgForeignKeyConstraint,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, ctx := newTestStoreWithTx(t)
+			p := tt.params
+			// We need a date, even for failure usually
+			p.Date = time.Now()
 
 			_, err := s.UpsertPresence(ctx, p)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-			} else {
-				require.NoError(t, err)
+			require.Error(t, err)
+			if tt.errMsg != "" {
+				assert.Contains(t, err.Error(), tt.errMsg)
 			}
 		})
 	}

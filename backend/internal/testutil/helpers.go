@@ -19,7 +19,7 @@ func RandomString(n int) string {
 func GetTestDatabaseURL() string {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://presence_user:presence_password@localhost:5432/presence_db?sslmode=disable"
+		dbURL = "postgres://user:password@localhost:5432/presence_db?sslmode=disable"
 	}
 	return dbURL
 }

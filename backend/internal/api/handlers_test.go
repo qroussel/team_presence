@@ -80,7 +80,7 @@ func TestUsersEndpoint(t *testing.T) {
 		AvatarURL: "http://example.com/api_avatar.jpg",
 	}
 	body, _ := json.Marshal(newUserReq)
-	req, _ := http.NewRequest("POST", "/api/users", bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", PathUsers, bytes.NewBuffer(body))
 	rr := executeRequest(server, req, ctx)
 
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -93,7 +93,7 @@ func TestUsersEndpoint(t *testing.T) {
 	// No manual cleanup needed! Transaction rollback handles it.
 
 	// GET /api/users
-	req, _ = http.NewRequest("GET", "/api/users", nil)
+	req, _ = http.NewRequest("GET", PathUsers, nil)
 	rr = executeRequest(server, req, ctx)
 
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -116,7 +116,7 @@ func TestUsersEndpoint(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	// Verify Delete
-	req, _ = http.NewRequest("GET", "/api/users", nil)
+	req, _ = http.NewRequest("GET", PathUsers, nil)
 	rr = executeRequest(server, req, ctx)
 	var usersAfter []UserResponse
 	err = json.Unmarshal(rr.Body.Bytes(), &usersAfter)
@@ -195,7 +195,7 @@ func TestTeamsEndpoint(t *testing.T) {
 	// POST /api/teams - Create team
 	newTeamReq := CreateTeamRequest{Name: teamName}
 	body, _ := json.Marshal(newTeamReq)
-	req, _ := http.NewRequest("POST", "/api/teams", bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", PathTeams, bytes.NewBuffer(body))
 	rr := executeRequest(server, req, ctx)
 
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -208,7 +208,7 @@ func TestTeamsEndpoint(t *testing.T) {
 	// No manual cleanup
 
 	// GET /api/teams - List teams
-	req, _ = http.NewRequest("GET", "/api/teams", nil)
+	req, _ = http.NewRequest("GET", PathTeams, nil)
 	rr = executeRequest(server, req, ctx)
 
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -232,7 +232,7 @@ func TestTeamsEndpoint(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	// Verify Delete
-	req, _ = http.NewRequest("GET", "/api/teams", nil)
+	req, _ = http.NewRequest("GET", PathTeams, nil)
 	rr = executeRequest(server, req, ctx)
 	var teamsAfter []TeamResponse
 	err = json.Unmarshal(rr.Body.Bytes(), &teamsAfter)

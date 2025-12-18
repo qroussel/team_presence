@@ -17,7 +17,8 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://presence_user:presence_password@localhost:5432/presence_db?sslmode=disable"
+		// Default to local development DB; in production, always set DATABASE_URL
+		dbURL = "postgres://user:password@localhost:5432/presence_db?sslmode=disable"
 	}
 
 	// Create a context for the store connection
