@@ -35,3 +35,4 @@ postgres_data/
 # Local Testing 
 docker-compose.yml
 backend/sonar-project.properties
+backend/.scannerwork/
