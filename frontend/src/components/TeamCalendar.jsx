@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay, parseISO } from 'date-fns';
 import { isFrenchHoliday } from '../utils/holidays';
+import AddMemberModal from './AddMemberModal';
 
 const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
     // Default to current month
@@ -11,6 +12,8 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
     const [teamMembers, setTeamMembers] = useState([]);
     const [presenceData, setPresenceData] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
+
     const scrollContainerRef = useRef(null);
 
     // Initial selection
@@ -114,49 +117,15 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
         }
     };
 
-    const handleCreateTeam = async () => {
-        const name = prompt("Enter team name:");
-        if (!name) return;
-        try {
-            const res = await fetch('/api/teams', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
-            });
-            if (res.ok) {
-                window.location.reload(); // Simple reload to refresh everything
-            }
-        } catch (e) {
-            alert("Failed to create team");
-        }
-    };
-
-    // User selection for adding to team
-    const handleAddMember = async () => {
-        const email = prompt("Enter user email to add to this team:");
-        if (!email) return;
-
-        const user = allUsers.find(u => u.email === email);
-        if (!user) {
-            alert("User not found!");
-            return;
-        }
-
-        const ratioStr = prompt("Enter productivity ratio (0-100):", "100");
-        const ratio = parseInt(ratioStr);
-        if (isNaN(ratio) || ratio < 0 || ratio > 100) {
-            alert("Invalid ratio");
-            return;
-        }
-
+    const handleConfirmAddMember = async (userId, productivity) => {
         try {
             const res = await fetch('/api/team_members', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     team_id: selectedTeamId,
-                    user_id: user.id,
-                    productivity: ratio
+                    user_id: userId,
+                    productivity: productivity
                 })
             });
             if (res.ok) {
@@ -178,13 +147,13 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                 <select
                     value={selectedTeamId || ''}
                     onChange={e => setSelectedTeamId(Number(e.target.value))}
-                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
+                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
                 >
                     {teams.map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
+                        <option key={t.id} value={t.id} style={{ color: 'initial' }}>{t.name}</option>
                     ))}
                 </select>
-                <button onClick={onAddTeamClick} style={{ padding: '0.5rem', cursor: 'pointer' }}>+ Team</button>
+                <button onClick={onAddTeamClick} style={{ padding: '0.5rem 1rem', cursor: 'pointer', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: '4px' }}>+ Team</button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>From:</label>
@@ -192,7 +161,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                         type="date"
                         value={isValidDate(startDate) ? format(startDate, 'yyyy-MM-dd') : ''}
                         onChange={handleStartDateChange}
-                        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
+                        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
                     />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -201,7 +170,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                         type="date"
                         value={isValidDate(endDate) ? format(endDate, 'yyyy-MM-dd') : ''}
                         onChange={handleEndDateChange}
-                        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
+                        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
                     />
                 </div>
 
@@ -247,7 +216,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                 <div style={{ flex: '0 0 200px', borderRight: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                     <div style={{ height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 'bold', padding: '0 0.5rem', background: 'var(--bg-secondary)' }}>
                         <span>Members</span>
-                        <button onClick={handleAddMember} style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>+</button>
+                        <button onClick={() => setIsAddMemberModalOpen(true)} style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem', cursor: 'pointer' }}>+</button>
                     </div>
                     {teamMembers.map(member => (
                         <div key={member.user_id} style={{
@@ -314,6 +283,16 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                     </div>
                 </div>
             </div>
+
+            <AddMemberModal
+                isOpen={isAddMemberModalOpen}
+                onClose={() => setIsAddMemberModalOpen(false)}
+                allUsers={allUsers}
+                teamId={selectedTeamId}
+                existingMembers={teamMembers}
+                onAdd={handleConfirmAddMember}
+                teamName={teams.find(t => t.id === selectedTeamId)?.name}
+            />
         </div>
     );
 };

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 
 const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
-    if (!isOpen || !user) return null;
-
     const [userTeams, setUserTeams] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -12,6 +11,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
     const [productivityToAdd, setProductivityToAdd] = useState(100);
 
     const fetchUserTeams = async () => {
+        if (!user) return;
         setLoading(true);
         try {
             const res = await fetch(`/api/team_members?user_id=${user.id}`);
@@ -33,6 +33,8 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
         }
     }, [isOpen, user]);
 
+    if (!isOpen || !user) return null;
+
     const handleUpdateProductivity = async (teamId, newProd) => {
         try {
             const res = await fetch('/api/team_members', {
@@ -41,7 +43,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
                 body: JSON.stringify({
                     team_id: teamId,
                     user_id: user.id,
-                    productivity: parseInt(newProd)
+                    productivity: Number.parseInt(newProd, 10)
                 })
             });
             if (res.ok) {
@@ -53,7 +55,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
     };
 
     const handleRemoveFromTeam = async (teamId) => {
-        if (!confirm("Remove user from this team?")) return;
+        if (!window.confirm("Remove user from this team?")) return;
         try {
             const res = await fetch(`/api/team_members?team_id=${teamId}&user_id=${user.id}`, {
                 method: 'DELETE'
@@ -73,9 +75,9 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    team_id: parseInt(selectedTeamToAdd),
+                    team_id: Number.parseInt(selectedTeamToAdd, 10),
                     user_id: user.id,
-                    productivity: parseInt(productivityToAdd)
+                    productivity: Number.parseInt(productivityToAdd, 10)
                 })
             });
             if (res.ok) {
@@ -99,7 +101,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
             backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
             <div className="glass-panel" style={{ width: '500px', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
-                <button onClick={onClose} style={{ position: 'absolute', top: '10px', right: '10px', background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}>X</button>
+                <button onClick={onClose} style={{ position: 'absolute', top: '10px', right: '10px', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>X</button>
 
                 <h2 style={{ marginTop: 0 }}>Settings: {user.name}</h2>
 
@@ -113,8 +115,9 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
                                 <div key={tm.team_id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '4px' }}>
                                     <span style={{ flex: 1, fontWeight: 'bold' }}>{tm.team_name || `Team ${tm.team_id}`}</span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <label>Prod %:</label>
+                                        <label htmlFor={`prod-${tm.team_id}`}>Prod %:</label>
                                         <input
+                                            id={`prod-${tm.team_id}`}
                                             type="number"
                                             defaultValue={tm.productivity}
                                             onBlur={(e) => handleUpdateProductivity(tm.team_id, e.target.value)}
@@ -138,7 +141,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
                             style={{ flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--glass-border)', color: 'white', padding: '0.5rem', borderRadius: '4px' }}
                         >
                             <option value="">Select Team...</option>
-                            {teams.filter(t => !userTeams.find(ut => ut.team_id === t.id)).map(t => (
+                            {teams.filter(t => !userTeams.some(ut => ut.team_id === t.id)).map(t => (
                                 <option key={t.id} value={t.id}>{t.name}</option>
                             ))}
                         </select>
@@ -154,7 +157,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
                 </div>
 
                 {/* Danger Zone */}
-                <div style={{ borderTop: '1px solid #ef4444', paddingTop: '1rem' }}>
+                <div style={{ paddingTop: '1rem' }}>
                     {!showDeleteConfirm ? (
                         <button
                             onClick={() => setShowDeleteConfirm(true)}
@@ -186,6 +189,14 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
             </div>
         </div>
     );
+};
+
+UserSettingsModal.propTypes = {
+    user: PropTypes.object,
+    isOpen: PropTypes.bool.isRequired,
+    onClose: PropTypes.func.isRequired,
+    onDeleteUser: PropTypes.func.isRequired,
+    teams: PropTypes.array.isRequired
 };
 
 export default UserSettingsModal;

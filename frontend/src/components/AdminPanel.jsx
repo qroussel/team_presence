@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-
 import PropTypes from 'prop-types'
+import AddMemberModal from './AddMemberModal'
 
 export default function AdminPanel({ onBack }) {
     const [teams, setTeams] = useState([])
@@ -10,8 +10,10 @@ export default function AdminPanel({ onBack }) {
 
     // Team Member Management State
     const [teamMembers, setTeamMembers] = useState([])
-    const [selectedUserToAdd, setSelectedUserToAdd] = useState('')
-    const [productivityToAdd, setProductivityToAdd] = useState(100)
+    const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false)
+
+    // Delete Team State
+    const [teamToDelete, setTeamToDelete] = useState(null)
 
     // Create Team State
     const [newTeamName, setNewTeamName] = useState('')
@@ -72,20 +74,24 @@ export default function AdminPanel({ onBack }) {
         } catch (e) { console.error(e) }
     }
 
-    const handleDeleteTeam = async (teamId) => {
-        if (!globalThis.confirm('Are you sure you want to delete this team? All members will be removed from it.')) return
+    const confirmDeleteTeam = async () => {
+        if (!teamToDelete) return
         try {
-            const res = await fetch(`/api/teams?id=${teamId}`, { method: 'DELETE' })
+            const res = await fetch(`/api/teams?id=${teamToDelete.id}`, { method: 'DELETE' })
             if (res.ok) {
                 fetchTeams()
-                if (selectedTeamId === teamId) setSelectedTeamId(null)
+                if (selectedTeamId === teamToDelete.id) setSelectedTeamId(null)
             }
         } catch (e) { console.error(e) }
+        setTeamToDelete(null)
     }
 
-    const handleAddMember = async (e) => {
-        e.preventDefault()
-        if (!selectedTeamId || !selectedUserToAdd) return
+    const handleDeleteClick = (team) => {
+        setTeamToDelete(team)
+    }
+
+    const handleAddMember = async (userId, productivity) => {
+        if (!selectedTeamId) return
 
         try {
             const res = await fetch('/api/team_members', {
@@ -93,13 +99,12 @@ export default function AdminPanel({ onBack }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     team_id: selectedTeamId,
-                    user_id: Number.parseInt(selectedUserToAdd, 10),
-                    productivity: Number.parseInt(productivityToAdd, 10)
+                    user_id: userId,
+                    productivity: productivity
                 })
             })
             if (res.ok) {
                 fetchTeamMembers(selectedTeamId)
-                // Reset form? maybe keep productivity
             }
         } catch (e) { console.error(e) }
     }
@@ -189,7 +194,7 @@ export default function AdminPanel({ onBack }) {
                                     {team.name}
                                 </button>
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteTeam(team.id) }}
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteClick(team) }}
                                     aria-label={`Delete ${team.name}`}
                                     style={{
                                         background: 'var(--danger-bg, #ef4444)',
@@ -217,32 +222,14 @@ export default function AdminPanel({ onBack }) {
                                 Members of {teams.find(t => t.id === selectedTeamId)?.name}
                             </h3>
 
-                            <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }}>
-                                <h4 style={{ marginTop: 0 }}>Add Member</h4>
-                                <form onSubmit={handleAddMember} style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <select
-                                        value={selectedUserToAdd}
-                                        onChange={e => setSelectedUserToAdd(e.target.value)}
-                                        style={{ padding: '0.5rem', borderRadius: '4px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)' }}
-                                    >
-                                        <option value="">Select User</option>
-                                        {users.map(u => (
-                                            <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                                        ))}
-                                    </select>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                        <span>Productivity:</span>
-                                        <input
-                                            type="number"
-                                            min="0" max="100"
-                                            value={productivityToAdd}
-                                            onChange={e => setProductivityToAdd(e.target.value)}
-                                            style={{ width: '60px' }}
-                                        />
-                                        <span>%</span>
-                                    </label>
-                                    <button type="submit" disabled={!selectedUserToAdd}>Add to Team</button>
-                                </form>
+                            <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h4 style={{ margin: 0 }}>Team Members</h4>
+                                <button
+                                    onClick={() => setIsAddMemberModalOpen(true)}
+                                    style={{ background: 'var(--accent)', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                    + Add Member
+                                </button>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -287,6 +274,34 @@ export default function AdminPanel({ onBack }) {
                     )}
                 </div>
             </div>
+
+            {/* Delete Confirmation Modal */}
+            {teamToDelete && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200
+                }} onClick={() => setTeamToDelete(null)}>
+                    <div className="glass-panel" style={{ width: '400px', maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
+                        <h3 style={{ marginTop: 0 }}>Delete Team</h3>
+                        <p>Are you sure you want to delete <strong>{teamToDelete.name}</strong>? This action cannot be undone.</p>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                            <button onClick={() => setTeamToDelete(null)} style={{ background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={confirmDeleteTeam} style={{ background: '#ef4444', border: 'none', color: 'white', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Member Modal */}
+            <AddMemberModal
+                isOpen={isAddMemberModalOpen}
+                onClose={() => setIsAddMemberModalOpen(false)}
+                allUsers={users}
+                teamId={selectedTeamId}
+                existingMembers={teamMembers}
+                onAdd={handleAddMember}
+                teamName={teams.find(t => t.id === selectedTeamId)?.name}
+            />
         </div>
     )
 }
@@ -294,4 +309,3 @@ export default function AdminPanel({ onBack }) {
 AdminPanel.propTypes = {
     onBack: PropTypes.func.isRequired
 }
-
