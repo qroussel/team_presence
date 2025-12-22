@@ -18,7 +18,7 @@ func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		// Default to local development DB; in production, always set DATABASE_URL
-		dbURL = "postgres://user:password@localhost:5432/presence_db?sslmode=disable"
+		dbURL = "postgres://presence_user:presence_password@localhost:5432/presence_db?sslmode=disable"
 	}
 
 	// Create a context for the store connection
@@ -31,6 +31,10 @@ func main() {
 
 	if err := s.InitSchema("schema.sql"); err != nil {
 		log.Printf("Warning: Failed to init schema (db might not be ready): %v", err)
+	}
+
+	if err := s.SeedAdmin(context.Background()); err != nil {
+		log.Printf("Warning: Failed to seed admin: %v", err)
 	}
 
 	server := api.NewServer(s)

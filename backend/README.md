@@ -101,4 +101,19 @@ go test -v ./...
 | `POST` | `/api/teams` | Create a new team |
 | `GET` | `/api/team_members` | Get members (params: `team_id` or `user_id`) |
 | `POST` | `/api/team_members` | Add user to team |
-| `DELETE` | `/api/team_members` | Remove user from team (params: `team_id`, `user_id`) |
+| `PUT` | `/api/team_members` | Update member role/role/productivity |
+| `DELETE` | `/api/team_members` | Remove user from team |
+
+## RBAC & Permissions
+
+The application uses a 3-level Role-Based Access Control system: **Admin**, **Team Owner**, and **Member/User**.
+
+| Endpoint | Method | Admin | Team Owner | User | Note |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| `/api/teams` | `POST` | ✅ | ✅ | ✅ | Creator becomes Owner |
+| `/api/teams` | `DELETE` | ✅ | ✅ (Own Team) | ❌ | |
+| `/api/team_members` | `POST` | ✅ | ✅ (Own Team) | ❌ | Add Members |
+| `/api/team_members` | `PUT` | ✅ | ✅ (Own Team) | ❌ | Promote/Demote |
+| `/api/team_members` | `DELETE`| ✅ | ✅ (Own Team) | ✅ (Self) | Remove/Leave |
+| `/api/users` | `POST/DELETE` | ✅ | ❌ | ❌ | Admin only |
+| `/api/presence` | `POST` | ✅ | ✅ (Team Members) | ✅ (Self) | |

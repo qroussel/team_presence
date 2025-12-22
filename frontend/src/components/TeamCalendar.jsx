@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay, parseISO } from 'date-fns';
 import { isFrenchHoliday } from '../utils/holidays';
 import AddMemberModal from './AddMemberModal';
+import { apiFetch } from '../utils/api';
 
 const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
     // Default to current month
@@ -28,7 +29,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
         const fetchMembers = async () => {
             if (!selectedTeamId) return;
             try {
-                const res = await fetch(`/api/team_members?team_id=${selectedTeamId}`);
+                const res = await apiFetch(`/api/team_members?team_id=${selectedTeamId}`);
                 if (res.ok) {
                     const data = await res.json();
                     setTeamMembers(data || []);
@@ -50,7 +51,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
             const endStr = format(endDate, 'yyyy-MM-dd');
 
             try {
-                const res = await fetch(`/api/presence?start=${startStr}&end=${endStr}`);
+                const res = await apiFetch(`/api/presence?start=${startStr}&end=${endStr}`);
                 if (res.ok) {
                     const data = await res.json();
                     setPresenceData(data || []);
@@ -119,7 +120,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
 
     const handleConfirmAddMember = async (userId, productivity) => {
         try {
-            const res = await fetch('/api/team_members', {
+            const res = await apiFetch('/api/team_members', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -130,7 +131,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
             });
             if (res.ok) {
                 // Refresh members
-                const res2 = await fetch(`/api/team_members?team_id=${selectedTeamId}`);
+                const res2 = await apiFetch(`/api/team_members?team_id=${selectedTeamId}`);
                 const data = await res2.json();
                 setTeamMembers(data || []);
             }

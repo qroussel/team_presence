@@ -88,7 +88,7 @@ func TestTeamOperations(t *testing.T) {
 
 	// Create team using builder
 	builder := testutil.NewTeamBuilder()
-	createdTeam, err := s.CreateTeam(ctx, builder.Name())
+	createdTeam, err := s.CreateTeam(ctx, CreateTeamParams{Name: builder.Name()})
 	require.NoError(t, err)
 	assert.NotZero(t, createdTeam.ID)
 
@@ -96,7 +96,7 @@ func TestTeamOperations(t *testing.T) {
 		teams, err := s.GetTeams(ctx)
 		require.NoError(t, err)
 
-		found, ok := testutil.FindInSlice(teams, func(team Team) bool {
+		found, ok := testutil.FindInSlice(teams, func(team GetTeamsRow) bool {
 			return team.ID == createdTeam.ID
 		})
 		require.True(t, ok, "Created team should be found in GetTeams")
@@ -110,7 +110,7 @@ func TestTeamOperations(t *testing.T) {
 		teamsAfter, err := s.GetTeams(ctx)
 		require.NoError(t, err)
 
-		foundAfter := testutil.ContainsInSlice(teamsAfter, func(team Team) bool {
+		foundAfter := testutil.ContainsInSlice(teamsAfter, func(team GetTeamsRow) bool {
 			return team.ID == createdTeam.ID
 		})
 		assert.False(t, foundAfter, "Deleted team should not be found")
@@ -129,7 +129,7 @@ func TestTeamMemberOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	teamBuilder := testutil.NewTeamBuilder()
-	team, err := s.CreateTeam(ctx, teamBuilder.Name())
+	team, err := s.CreateTeam(ctx, CreateTeamParams{Name: teamBuilder.Name()})
 	require.NoError(t, err)
 
 	productivity := int32(85)

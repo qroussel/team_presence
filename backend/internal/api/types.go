@@ -15,6 +15,7 @@ type UserResponse struct {
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	AvatarURL string    `json:"avatar_url"`
+	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -45,7 +46,18 @@ type CreateTeamRequest struct {
 type TeamResponse struct {
 	ID        int       `json:"id"`
 	Name      string    `json:"name"`
+	OwnerID   *int      `json:"owner_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// UpdateTeamRequest is the payload for updating a team
+type UpdateTeamRequest struct {
+	OwnerID int32 `json:"owner_id"`
+}
+
+type UpdateTeamMemberRequest struct {
+	Role         string `json:"role"`
+	Productivity int    `json:"productivity"` // Optional, keeping it for flexibility
 }
 
 // AddTeamMemberRequest is the payload for adding a user to a team
@@ -61,6 +73,7 @@ type TeamMemberResponse struct {
 	TeamID       int       `json:"team_id"`
 	UserID       int       `json:"user_id"`
 	Productivity int       `json:"productivity"`
+	Role         string    `json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UserName     string    `json:"user_name,omitempty"`
 	TeamName     string    `json:"team_name,omitempty"`

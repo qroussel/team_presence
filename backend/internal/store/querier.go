@@ -10,16 +10,20 @@ import (
 
 type Querier interface {
 	AddUserToTeam(ctx context.Context, arg AddUserToTeamParams) (AddUserToTeamRow, error)
-	CreateTeam(ctx context.Context, name string) (CreateTeamRow, error)
+	CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateTeamRow, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	DeleteTeam(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
 	GetPresence(ctx context.Context, arg GetPresenceParams) ([]GetPresenceRow, error)
+	GetTeamByID(ctx context.Context, id int32) (GetTeamByIDRow, error)
 	GetTeamMembers(ctx context.Context, teamID int32) ([]GetTeamMembersRow, error)
-	GetTeams(ctx context.Context) ([]Team, error)
+	GetTeams(ctx context.Context) ([]GetTeamsRow, error)
+	GetUserByID(ctx context.Context, id int32) (GetUserByIDRow, error)
 	GetUserTeams(ctx context.Context, userID int32) ([]GetUserTeamsRow, error)
 	GetUsers(ctx context.Context) ([]GetUsersRow, error)
 	RemoveUserFromTeam(ctx context.Context, arg RemoveUserFromTeamParams) error
+	UpdateTeamMemberRole(ctx context.Context, arg UpdateTeamMemberRoleParams) error
+	UpdateTeamOwner(ctx context.Context, arg UpdateTeamOwnerParams) error
 	UpsertPresence(ctx context.Context, arg UpsertPresenceParams) (UpsertPresenceRow, error)
 }
 

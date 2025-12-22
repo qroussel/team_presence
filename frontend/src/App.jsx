@@ -4,6 +4,8 @@ import TeamCalendar from './components/TeamCalendar'
 import AdminPanel from './components/AdminPanel' // Import AdminPanel
 import { ThemeProvider } from './context/ThemeContext'
 import ThemeSwitcher from './components/ThemeSwitcher'
+import UserSwitcher from './components/UserSwitcher'
+import { apiFetch } from './utils/api'
 
 import AddTeamModal from './components/AddTeamModal'
 import UserSettingsModal from './components/UserSettingsModal'
@@ -24,7 +26,7 @@ function AppContent() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users')
+      const res = await apiFetch('/api/users')
       if (res.ok) {
         const data = await res.json()
         setUsers(data || [])
@@ -40,7 +42,7 @@ function AppContent() {
 
   const fetchTeams = async () => {
     try {
-      const res = await fetch('/api/teams')
+      const res = await apiFetch('/api/teams')
       if (res.ok) {
         const data = await res.json()
         setTeams(data || [])
@@ -57,13 +59,15 @@ function AppContent() {
 
   const handleDeleteUser = async (userId) => {
     try {
-      const res = await fetch(`/api/users?id=${userId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/users?id=${userId}`, { method: 'DELETE' })
       if (res.ok) {
         // Refresh users, clear selection if needed
         await fetchUsers()
         if (selectedUserId === userId) {
           setSelectedUserId(null)
         }
+      } else {
+        alert("Action failed - Check your permissions (Admin only)")
       }
     } catch (e) {
       console.error("Failed to delete user", e)
@@ -75,9 +79,8 @@ function AppContent() {
     if (!newUserName || !newUserEmail) return
 
     try {
-      const res = await fetch('/api/users', {
+      const res = await apiFetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newUserName,
           email: newUserEmail,
@@ -85,19 +88,12 @@ function AppContent() {
         })
       })
       if (res.ok) {
-        // Also add to default 'Engineering' team if it exists
-        // Ideally backend does this, but for now we can do it here or let user manage it.
-        // The prompt says "By default a user have 1 team".
-        // Let's rely on manual assignment for now or handle it later.
-        // Actually, if I create a user, I should probably add them to the first team found?
-        // Let's just create user for now.
         const newUser = await res.json()
 
         // Auto-add to first team (Engineering)
         if (teams.length > 0) {
-          await fetch('/api/team_members', {
+          await apiFetch('/api/team_members', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               team_id: teams[0].id,
               user_id: newUser.id,
@@ -109,6 +105,8 @@ function AppContent() {
         setNewUserName('')
         setNewUserEmail('')
         fetchUsers()
+      } else {
+        alert("Action failed - Check your permissions (Admin only)")
       }
     } catch (e) {
       console.error("Failed to add user", e)
@@ -120,6 +118,7 @@ function AppContent() {
   if (viewMode === 'admin') {
     return (
       <div>
+        <UserSwitcher />
         <AdminPanel onBack={() => {
           setViewMode('personal')
           fetchTeams() // Refresh teams when returning
@@ -131,6 +130,7 @@ function AppContent() {
 
   return (
     <div>
+      <UserSwitcher />
       <header style={{ marginBottom: '2rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
         <div>
           <h1>Team Presence</h1>

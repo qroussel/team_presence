@@ -20,9 +20,10 @@ type Presence struct {
 }
 
 type Team struct {
-	ID        int32     `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        int32       `json:"id"`
+	Name      string      `json:"name"`
+	CreatedAt time.Time   `json:"created_at"`
+	OwnerID   pgtype.Int4 `json:"owner_id"`
 }
 
 type TeamMember struct {
@@ -30,6 +31,7 @@ type TeamMember struct {
 	TeamID       int32       `json:"team_id"`
 	UserID       int32       `json:"user_id"`
 	Productivity pgtype.Int4 `json:"productivity"`
+	Role         string      `json:"role"`
 	CreatedAt    time.Time   `json:"created_at"`
 }
 
@@ -39,4 +41,5 @@ type User struct {
 	Email     string      `json:"email"`
 	AvatarUrl pgtype.Text `json:"avatar_url"`
 	CreatedAt time.Time   `json:"created_at"`
+	Role      string      `json:"role"`
 }

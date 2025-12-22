@@ -2,7 +2,9 @@ package api
 
 import (
 	"backend/internal/store"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,10 +20,13 @@ const (
 	PathPresence    = "/api/presence"
 	PathTeamMembers = "/api/team_members"
 
-	MsgMethodNotAllowed = "Method not allowed"
-	MsgMissingID        = "Missing id"
-	MsgInvalidID        = "Invalid id"
-	DateFormat          = "2006-01-02"
+	MsgMethodNotAllowed    = "Method not allowed"
+	MsgMissingID           = "Missing id"
+	MsgInvalidID           = "Invalid id"
+	MsgInvalidTeamID       = "Invalid team_id"
+	MsgInvalidUserID       = "Invalid user_id"
+	MsgMissingTeamOrUserID = "Missing team_id or user_id"
+	DateFormat             = "2006-01-02"
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +61,7 @@ func (s *Server) handleGetUsers(w http.ResponseWriter, r *http.Request) {
 			Name:      u.Name,
 			Email:     u.Email,
 			AvatarURL: u.AvatarUrl,
+			Role:      u.Role,
 			CreatedAt: u.CreatedAt,
 		})
 	}
@@ -63,6 +69,12 @@ func (s *Server) handleGetUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil || authUser.Role != "Admin" {
+		http.Error(w, "Forbidden: Admins only", http.StatusForbidden)
+		return
+	}
+
 	var req CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -95,6 +107,12 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil || authUser.Role != "Admin" {
+		http.Error(w, "Forbidden: Admins only", http.StatusForbidden)
+		return
+	}
+
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" {
 		http.Error(w, MsgMissingID, http.StatusBadRequest)
@@ -165,10 +183,47 @@ func (s *Server) handleGetPresence(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// checkPresenceAuthorization determines if the authenticated user can modify presence for targetUserID.
+// Rules: Admin, Self, or Owner of a team the target user is in.
+func (s *Server) checkPresenceAuthorization(ctx context.Context, authUser *AuthUser, targetUserID int32) bool {
+	if authUser.Role == "Admin" || authUser.ID == targetUserID {
+		return true
+	}
+
+	// Check if authUser owns any team the target user is in
+	userTeams, err := s.store.GetUserTeams(ctx, targetUserID)
+	if err != nil {
+		return false
+	}
+
+	for _, t := range userTeams {
+		members, err := s.store.GetTeamMembers(ctx, t.TeamID)
+		if err == nil {
+			for _, m := range members {
+				if m.UserID == authUser.ID && m.Role == "Owner" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (s *Server) handleUpsertPresence(w http.ResponseWriter, r *http.Request) {
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var req UpsertPresenceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if !s.checkPresenceAuthorization(r.Context(), authUser, int32(req.UserID)) {
+		http.Error(w, "Forbidden: You cannot modify presence for this user", http.StatusForbidden)
 		return
 	}
 
@@ -208,6 +263,8 @@ func (s *Server) handleTeams(w http.ResponseWriter, r *http.Request) {
 		s.handleCreateTeam(w, r)
 	case http.MethodDelete:
 		s.handleDeleteTeam(w, r)
+	case http.MethodPut:
+		http.Error(w, "Use /api/team_members for ownership changes", http.StatusBadRequest)
 	default:
 		http.Error(w, MsgMethodNotAllowed, http.StatusMethodNotAllowed)
 	}
@@ -231,6 +288,12 @@ func (s *Server) handleGetTeams(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateTeam(w http.ResponseWriter, r *http.Request) {
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var req CreateTeamRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -240,16 +303,52 @@ func (s *Server) handleCreateTeam(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Team name is required", http.StatusBadRequest)
 		return
 	}
-	t, err := s.store.CreateTeam(r.Context(), req.Name)
+
+	params := store.CreateTeamParams{
+		Name:    req.Name,
+		OwnerID: pgtype.Int4{Int32: authUser.ID, Valid: true},
+	}
+	t, err := s.store.CreateTeam(r.Context(), params)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	addParams := store.AddUserToTeamParams{
+		TeamID:       t.ID,
+		UserID:       authUser.ID,
+		Productivity: pgtype.Int4{Int32: 100, Valid: true},
+		Role:         "Owner",
+	}
+	_, err = s.store.AddUserToTeam(r.Context(), addParams)
+	if err != nil {
+		s.store.DeleteTeam(r.Context(), t.ID)
+		http.Error(w, "Failed to assign owner: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	json.NewEncoder(w).Encode(TeamResponse{
 		ID:        int(t.ID),
 		Name:      req.Name,
 		CreatedAt: t.CreatedAt,
 	})
+}
+
+// checkAdminOrTeamOwner verifies if the user is an Admin or an Owner of the specific team.
+func (s *Server) checkAdminOrTeamOwner(ctx context.Context, authUser *AuthUser, teamID int32) bool {
+	if authUser.Role == "Admin" {
+		return true
+	}
+	members, err := s.store.GetTeamMembers(ctx, teamID)
+	if err != nil {
+		return false
+	}
+	for _, m := range members {
+		if m.UserID == authUser.ID && m.Role == "Owner" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleDeleteTeam(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +362,18 @@ func (s *Server) handleDeleteTeam(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, MsgInvalidID, http.StatusBadRequest)
 		return
 	}
+
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if !s.checkAdminOrTeamOwner(r.Context(), authUser, int32(id)) {
+		http.Error(w, "Forbidden: Only Admin or Team Owner can delete this team", http.StatusForbidden)
+		return
+	}
+
 	if err := s.store.DeleteTeam(r.Context(), int32(id)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -276,6 +387,8 @@ func (s *Server) handleTeamMembers(w http.ResponseWriter, r *http.Request) {
 		s.handleGetTeamMembers(w, r)
 	case http.MethodPost:
 		s.handleAddTeamMember(w, r)
+	case http.MethodPut:
+		s.handleUpdateTeamMember(w, r)
 	case http.MethodDelete:
 		s.handleRemoveTeamMember(w, r)
 	default:
@@ -288,60 +401,73 @@ func (s *Server) handleGetTeamMembers(w http.ResponseWriter, r *http.Request) {
 	userIDStr := r.URL.Query().Get("user_id")
 
 	if teamIDStr != "" {
-		var teamID int
-		if _, err := fmt.Sscanf(teamIDStr, "%d", &teamID); err != nil {
-			http.Error(w, "Invalid team_id", http.StatusBadRequest)
-			return
-		}
-		members, err := s.store.GetTeamMembers(r.Context(), int32(teamID))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		var response []TeamMemberResponse
-		for _, tm := range members {
-			response = append(response, TeamMemberResponse{
-				ID:           int(tm.ID),
-				TeamID:       int(tm.TeamID),
-				UserID:       int(tm.UserID),
-				Productivity: int(tm.Productivity.Int32),
-				CreatedAt:    tm.CreatedAt,
-				UserName:     tm.UserName,
-				TeamName:     "",
-			})
-		}
-		json.NewEncoder(w).Encode(response)
+		s.renderTeamMembersByTeamID(w, r, teamIDStr)
 	} else if userIDStr != "" {
-		var userID int
-		if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil {
-			http.Error(w, "Invalid user_id", http.StatusBadRequest)
-			return
-		}
-		members, err := s.store.GetUserTeams(r.Context(), int32(userID))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		var response []TeamMemberResponse
-		for _, tm := range members {
-			response = append(response, TeamMemberResponse{
-				ID:           int(tm.ID),
-				TeamID:       int(tm.TeamID),
-				UserID:       int(tm.UserID),
-				Productivity: int(tm.Productivity.Int32),
-				CreatedAt:    tm.CreatedAt,
-				UserName:     "",
-				TeamName:     tm.TeamName,
-			})
-		}
-		json.NewEncoder(w).Encode(response)
+		s.renderTeamMembersByUserID(w, r, userIDStr)
 	} else {
-		http.Error(w, "Missing team_id or user_id", http.StatusBadRequest)
-		return
+		http.Error(w, MsgMissingTeamOrUserID, http.StatusBadRequest)
 	}
 }
 
+func (s *Server) renderTeamMembersByTeamID(w http.ResponseWriter, r *http.Request, teamIDStr string) {
+	var teamID int
+	if _, err := fmt.Sscanf(teamIDStr, "%d", &teamID); err != nil {
+		http.Error(w, MsgInvalidTeamID, http.StatusBadRequest)
+		return
+	}
+	members, err := s.store.GetTeamMembers(r.Context(), int32(teamID))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var response []TeamMemberResponse
+	for _, tm := range members {
+		response = append(response, TeamMemberResponse{
+			ID:           int(tm.ID),
+			TeamID:       int(tm.TeamID),
+			UserID:       int(tm.UserID),
+			Productivity: int(tm.Productivity.Int32),
+			Role:         tm.Role,
+			CreatedAt:    tm.CreatedAt,
+			UserName:     tm.UserName,
+		})
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) renderTeamMembersByUserID(w http.ResponseWriter, r *http.Request, userIDStr string) {
+	var userID int
+	if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil {
+		http.Error(w, MsgInvalidUserID, http.StatusBadRequest)
+		return
+	}
+	members, err := s.store.GetUserTeams(r.Context(), int32(userID))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var response []TeamMemberResponse
+	for _, tm := range members {
+		response = append(response, TeamMemberResponse{
+			ID:           int(tm.ID),
+			TeamID:       int(tm.TeamID),
+			UserID:       int(tm.UserID),
+			Productivity: int(tm.Productivity.Int32),
+			Role:         tm.Role,
+			CreatedAt:    tm.CreatedAt,
+			TeamName:     tm.TeamName,
+		})
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
 func (s *Server) handleAddTeamMember(w http.ResponseWriter, r *http.Request) {
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var req AddTeamMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -352,10 +478,16 @@ func (s *Server) handleAddTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.checkAdminOrTeamOwner(r.Context(), authUser, int32(req.TeamID)) {
+		http.Error(w, "Forbidden: Only Admin or Team Owner can add members", http.StatusForbidden)
+		return
+	}
+
 	params := store.AddUserToTeamParams{
 		TeamID:       int32(req.TeamID),
 		UserID:       int32(req.UserID),
 		Productivity: pgtype.Int4{Int32: int32(req.Productivity), Valid: true},
+		Role:         "Member",
 	}
 
 	tm, err := s.store.AddUserToTeam(r.Context(), params)
@@ -368,30 +500,98 @@ func (s *Server) handleAddTeamMember(w http.ResponseWriter, r *http.Request) {
 		TeamID:       req.TeamID,
 		UserID:       req.UserID,
 		Productivity: req.Productivity,
+		Role:         "Member",
 		CreatedAt:    tm.CreatedAt,
 	})
 }
 
-func (s *Server) handleRemoveTeamMember(w http.ResponseWriter, r *http.Request) {
+// parseTeamAndUserIDs Helper to extract query params
+func parseTeamAndUserIDs(r *http.Request) (int32, int32, error) {
 	teamIDStr := r.URL.Query().Get("team_id")
 	userIDStr := r.URL.Query().Get("user_id")
 	if teamIDStr == "" || userIDStr == "" {
-		http.Error(w, "Missing team_id or user_id", http.StatusBadRequest)
-		return
+		return 0, 0, errors.New(MsgMissingTeamOrUserID)
 	}
+
 	var teamID, userID int
 	if _, err := fmt.Sscanf(teamIDStr, "%d", &teamID); err != nil {
-		http.Error(w, "Invalid team_id", http.StatusBadRequest)
-		return
+		return 0, 0, errors.New(MsgInvalidTeamID)
 	}
 	if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil {
-		http.Error(w, "Invalid user_id", http.StatusBadRequest)
+		return 0, 0, errors.New(MsgInvalidUserID)
+	}
+	return int32(teamID), int32(userID), nil
+}
+
+func (s *Server) handleUpdateTeamMember(w http.ResponseWriter, r *http.Request) {
+	teamID, userID, err := parseTeamAndUserIDs(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req UpdateTeamMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if !s.checkAdminOrTeamOwner(r.Context(), authUser, teamID) {
+		http.Error(w, "Forbidden: Only Admin or Team Owner can update members", http.StatusForbidden)
+		return
+	}
+
+	if req.Role != "" {
+		if req.Role != "Owner" && req.Role != "Member" {
+			http.Error(w, "Invalid role. Must be 'Owner' or 'Member'", http.StatusBadRequest)
+			return
+		}
+		params := store.UpdateTeamMemberRoleParams{
+			TeamID: teamID,
+			UserID: userID,
+			Role:   req.Role,
+		}
+		if err := s.store.UpdateTeamMemberRole(r.Context(), params); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleRemoveTeamMember(w http.ResponseWriter, r *http.Request) {
+	teamID, userID, err := parseTeamAndUserIDs(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	authUser := GetUserFromContext(r.Context())
+	if authUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	isAuthorized := s.checkAdminOrTeamOwner(r.Context(), authUser, teamID)
+	if authUser.ID == userID {
+		isAuthorized = true
+	}
+
+	if !isAuthorized {
+		http.Error(w, "Forbidden: Only Admin, Team Owner, or User themselves can remove member", http.StatusForbidden)
 		return
 	}
 
 	params := store.RemoveUserFromTeamParams{
-		TeamID: int32(teamID),
-		UserID: int32(userID),
+		TeamID: teamID,
+		UserID: userID,
 	}
 
 	if err := s.store.RemoveUserFromTeam(r.Context(), params); err != nil {

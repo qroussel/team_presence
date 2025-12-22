@@ -84,6 +84,10 @@ func (s *Store) DeleteUser(ctx context.Context, id int32) error {
 	return s.getQueries(ctx).DeleteUser(ctx, id)
 }
 
+func (s *Store) GetUserByID(ctx context.Context, id int32) (GetUserByIDRow, error) {
+	return s.getQueries(ctx).GetUserByID(ctx, id)
+}
+
 func (s *Store) UpsertPresence(ctx context.Context, arg UpsertPresenceParams) (UpsertPresenceRow, error) {
 	return s.getQueries(ctx).UpsertPresence(ctx, arg)
 }
@@ -92,16 +96,20 @@ func (s *Store) GetPresence(ctx context.Context, arg GetPresenceParams) ([]GetPr
 	return s.getQueries(ctx).GetPresence(ctx, arg)
 }
 
-func (s *Store) CreateTeam(ctx context.Context, name string) (CreateTeamRow, error) {
-	return s.getQueries(ctx).CreateTeam(ctx, name)
+func (s *Store) CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateTeamRow, error) {
+	return s.getQueries(ctx).CreateTeam(ctx, arg)
 }
 
-func (s *Store) GetTeams(ctx context.Context) ([]Team, error) {
+func (s *Store) GetTeams(ctx context.Context) ([]GetTeamsRow, error) {
 	return s.getQueries(ctx).GetTeams(ctx)
 }
 
 func (s *Store) DeleteTeam(ctx context.Context, id int32) error {
 	return s.getQueries(ctx).DeleteTeam(ctx, id)
+}
+
+func (s *Store) GetTeamByID(ctx context.Context, id int32) (GetTeamByIDRow, error) {
+	return s.getQueries(ctx).GetTeamByID(ctx, id)
 }
 
 func (s *Store) AddUserToTeam(ctx context.Context, arg AddUserToTeamParams) (AddUserToTeamRow, error) {
@@ -118,4 +126,24 @@ func (s *Store) RemoveUserFromTeam(ctx context.Context, arg RemoveUserFromTeamPa
 
 func (s *Store) GetUserTeams(ctx context.Context, userID int32) ([]GetUserTeamsRow, error) {
 	return s.getQueries(ctx).GetUserTeams(ctx, userID)
+}
+
+func (s *Store) UpdateTeamOwner(ctx context.Context, arg UpdateTeamOwnerParams) error {
+	return s.getQueries(ctx).UpdateTeamOwner(ctx, arg)
+}
+
+func (s *Store) UpdateTeamMemberRole(ctx context.Context, arg UpdateTeamMemberRoleParams) error {
+	return s.getQueries(ctx).UpdateTeamMemberRole(ctx, arg)
+}
+
+func (s *Store) SeedAdmin(ctx context.Context) error {
+	query := `INSERT INTO users (name, email, role) 
+              VALUES ('Admin User', 'admin@example.com', 'Admin') 
+              ON CONFLICT (email) DO UPDATE SET role = 'Admin';`
+	_, err := s.pool.Exec(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to seed admin: %w", err)
+	}
+	fmt.Println("Checked/Seeded Admin User (admin@example.com) with role 'Admin'")
+	return nil
 }
