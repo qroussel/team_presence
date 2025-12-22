@@ -148,7 +148,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                 <select
                     value={selectedTeamId || ''}
                     onChange={e => setSelectedTeamId(Number(e.target.value))}
-                    style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
+                    style={{ border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
                 >
                     {teams.map(t => (
                         <option key={t.id} value={t.id} style={{ color: 'initial' }}>{t.name}</option>
@@ -162,7 +162,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                         type="date"
                         value={isValidDate(startDate) ? format(startDate, 'yyyy-MM-dd') : ''}
                         onChange={handleStartDateChange}
-                        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
+                        style={{ border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
                     />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -171,7 +171,7 @@ const TeamCalendar = ({ teams, allUsers, onAddTeamClick }) => {
                         type="date"
                         value={isValidDate(endDate) ? format(endDate, 'yyyy-MM-dd') : ''}
                         onChange={handleEndDateChange}
-                        style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
+                        style={{ border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem', borderRadius: '4px' }}
                     />
                 </div>
 
