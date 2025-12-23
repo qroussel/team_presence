@@ -33,7 +33,6 @@ postgres_data/
 .colima
 
 # Local Testing 
-docker-compose.yml
 backend/sonar-project.properties
 backend/.scannerwork/
 server.log
