@@ -235,7 +235,7 @@ func TestTeamsEndpoint(t *testing.T) {
 
 	// GET /api/teams - List teams
 	req, _ = http.NewRequest("GET", PathTeams, nil)
-	rr = executeRequest(server, req, ctx)
+	rr = executeRequest(server, req, adminCtx)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	var teams []TeamResponse
@@ -259,7 +259,7 @@ func TestTeamsEndpoint(t *testing.T) {
 
 	// Verify Delete
 	req, _ = http.NewRequest("GET", PathTeams, nil)
-	rr = executeRequest(server, req, ctx)
+	rr = executeRequest(server, req, adminCtx)
 	var teamsAfter []TeamResponse
 	err = json.Unmarshal(rr.Body.Bytes(), &teamsAfter)
 	require.NoError(t, err)
@@ -272,6 +272,61 @@ func TestTeamsEndpoint(t *testing.T) {
 		}
 	}
 	assert.False(t, foundAfter, "Deleted team should not be found")
+}
+
+func TestTeamsEndpointFiltering(t *testing.T) {
+	s, ctx := newTestStoreWithTx(t)
+	server := NewServer(s)
+
+	// Admin
+	uAdmin, _ := s.CreateUser(ctx, store.CreateUserParams{Name: "Admin", Email: "admin@filt.com", Role: "Admin"})
+	// User A
+	uA, _ := s.CreateUser(ctx, store.CreateUserParams{Name: "User A", Email: "ua@filt.com", Role: "User"})
+	// User B
+	uB, _ := s.CreateUser(ctx, store.CreateUserParams{Name: "User B", Email: "ub@filt.com", Role: "User"})
+
+	// Team 1: Owned by A
+	t1, _ := s.CreateTeam(ctx, store.CreateTeamParams{Name: "Team A", OwnerID: pgtype.Int4{Int32: uA.ID, Valid: true}})
+	s.AddUserToTeam(ctx, store.AddUserToTeamParams{TeamID: t1.ID, UserID: uA.ID, Role: "Owner"})
+
+	// Team 2: Owned by B
+	t2, _ := s.CreateTeam(ctx, store.CreateTeamParams{Name: "Team B", OwnerID: pgtype.Int4{Int32: uB.ID, Valid: true}})
+	s.AddUserToTeam(ctx, store.AddUserToTeamParams{TeamID: t2.ID, UserID: uB.ID, Role: "Owner"})
+
+	// Helper to get teams
+	getTeams := func(userID int32, role string) []TeamResponse {
+		req, _ := http.NewRequest("GET", PathTeams, nil)
+		// Mock auth context
+		authUser := AuthUser{ID: userID, Role: role}
+		reqCtx := context.WithValue(ctx, UserContextKey, authUser)
+		rr := executeRequest(server, req, reqCtx)
+		require.Equal(t, http.StatusOK, rr.Code)
+		var teams []TeamResponse
+		json.Unmarshal(rr.Body.Bytes(), &teams)
+		return teams
+	}
+
+	// 1. Admin sees everything
+	teamsAdmin := getTeams(uAdmin.ID, "Admin")
+	assert.GreaterOrEqual(t, len(teamsAdmin), 2)
+	// Check roles
+	for _, tRes := range teamsAdmin {
+		if tRes.ID == int(t1.ID) || tRes.ID == int(t2.ID) {
+			assert.Equal(t, "Admin", tRes.Role)
+		}
+	}
+
+	// 2. User A sees only Team A
+	teamsA := getTeams(uA.ID, "User")
+	assert.Len(t, teamsA, 1)
+	assert.Equal(t, int(t1.ID), teamsA[0].ID)
+	assert.Equal(t, "Owner", teamsA[0].Role)
+
+	// 3. User B sees only Team B
+	teamsB := getTeams(uB.ID, "User")
+	assert.Len(t, teamsB, 1)
+	assert.Equal(t, int(t2.ID), teamsB[0].ID)
+	assert.Equal(t, "Owner", teamsB[0].Role)
 }
 
 func TestTeamMembersEndpoint(t *testing.T) {

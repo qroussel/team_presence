@@ -5,15 +5,15 @@ import AdminPanel from './components/AdminPanel' // Import AdminPanel
 import { ThemeProvider } from './context/ThemeContext'
 import ThemeSwitcher from './components/ThemeSwitcher'
 import UserSwitcher from './components/UserSwitcher'
-import { apiFetch } from './utils/api'
+import { apiFetch, getSimulatedUserID } from './utils/api'
 
 import AddTeamModal from './components/AddTeamModal'
 import UserSettingsModal from './components/UserSettingsModal'
 
 function AppContent() {
   const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [selectedUserId, setSelectedUserId] = useState(null)
+  const [selectedUserId, setSelectedUserId] = useState(Number(getSimulatedUserID()) || null)
+  const [userMemberships, setUserMemberships] = useState([]) // Stores current user's team memberships
   const [viewMode, setViewMode] = useState('personal') // 'personal' | 'team' | 'admin'
   const [settingsUser, setSettingsUser] = useState(null) // User currently being edited in settings
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false)
@@ -56,6 +56,17 @@ function AppContent() {
     fetchUsers()
     fetchTeams()
   }, [])
+
+  useEffect(() => {
+    if (selectedUserId) {
+      apiFetch(`/api/team_members?user_id=${selectedUserId}`)
+        .then(res => res.json())
+        .then(data => setUserMemberships(data || []))
+        .catch(console.error)
+    } else {
+      setUserMemberships([])
+    }
+  }, [selectedUserId])
 
   const handleDeleteUser = async (userId) => {
     try {
@@ -119,11 +130,14 @@ function AppContent() {
     return (
       <div>
         <UserSwitcher />
-        <AdminPanel onBack={() => {
-          setViewMode('personal')
-          fetchTeams() // Refresh teams when returning
-          fetchUsers()
-        }} />
+        <AdminPanel
+          currentUser={currentUser}
+          onBack={() => {
+            setViewMode('personal')
+            fetchTeams() // Refresh teams when returning
+            fetchUsers()
+          }}
+        />
       </div>
     )
   }
@@ -290,12 +304,14 @@ function AppContent() {
           <ThemeSwitcher />
 
           {/* Discrete Admin Access */}
-          <button
-            onClick={() => setViewMode('admin')}
-            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', opacity: 0.5, fontSize: '0.8rem', cursor: 'pointer', marginTop: '1rem' }}
-          >
-            Admin Panel
-          </button>
+          {(currentUser?.role === 'Admin' || currentUser?.role === 'admin' || userMemberships.some(m => m.role === 'Owner')) && (
+            <button
+              onClick={() => setViewMode('admin')}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', opacity: 0.5, fontSize: '0.8rem', cursor: 'pointer', marginTop: '1rem' }}
+            >
+              Admin Panel
+            </button>
+          )}
         </div>
       </footer>
     </div>

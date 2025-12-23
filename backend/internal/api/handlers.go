@@ -271,19 +271,46 @@ func (s *Server) handleTeams(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetTeams(w http.ResponseWriter, r *http.Request) {
-	teams, err := s.store.GetTeams(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	authUser := GetUserFromContext(r.Context())
+	// Determine if user is authorized to see all teams or just their own
+	// If unauthenticated, they see nothing (or unauthorized)
+	if authUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	var response []TeamResponse
-	for _, t := range teams {
-		response = append(response, TeamResponse{
-			ID:        int(t.ID),
-			Name:      t.Name,
-			CreatedAt: t.CreatedAt,
-		})
+
+	if authUser.Role == "Admin" {
+		teams, err := s.store.GetTeams(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for _, t := range teams {
+			response = append(response, TeamResponse{
+				ID:        int(t.ID),
+				Name:      t.Name,
+				CreatedAt: t.CreatedAt,
+				Role:      "Admin", // Admins implicitly own everything
+			})
+		}
+	} else {
+		teams, err := s.store.GetTeamsForUser(r.Context(), authUser.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for _, t := range teams {
+			response = append(response, TeamResponse{
+				ID:        int(t.ID),
+				Name:      t.Name,
+				CreatedAt: t.CreatedAt,
+				Role:      t.Role,
+			})
+		}
 	}
+
 	json.NewEncoder(w).Encode(response)
 }
 

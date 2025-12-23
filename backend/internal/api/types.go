@@ -48,6 +48,7 @@ type TeamResponse struct {
 	Name      string    `json:"name"`
 	OwnerID   *int      `json:"owner_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+	Role      string    `json:"role,omitempty"` // Current user's role in the team
 }
 
 // UpdateTeamRequest is the payload for updating a team

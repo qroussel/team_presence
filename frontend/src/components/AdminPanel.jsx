@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { apiFetch } from '../utils/api';
 import PropTypes from 'prop-types'
 import AddMemberModal from './AddMemberModal'
 import ConfirmationModal from './ConfirmationModal'
 
-export default function AdminPanel({ onBack }) {
+export default function AdminPanel({ onBack, currentUser }) {
     const [teams, setTeams] = useState([])
     const [users, setUsers] = useState([])
     const [selectedTeamId, setSelectedTeamId] = useState(null)
@@ -26,6 +26,15 @@ export default function AdminPanel({ onBack }) {
 
     // Create Team State
     const [newTeamName, setNewTeamName] = useState('')
+
+    // Filter teams based on the role returned by the API
+    const visibleTeams = useMemo(() => {
+        if (!currentUser) return []
+        if (currentUser.role === 'Admin' || currentUser.role === 'admin') return teams
+        return teams.filter(t => t.role === 'Owner')
+    }, [teams, currentUser])
+
+
 
     useEffect(() => {
         fetchTeams()
@@ -247,7 +256,7 @@ export default function AdminPanel({ onBack }) {
                     </form>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {teams.map(team => (
+                        {visibleTeams.map(team => (
                             <div
                                 key={team.id}
                                 style={{
@@ -432,5 +441,6 @@ export default function AdminPanel({ onBack }) {
 }
 
 AdminPanel.propTypes = {
-    onBack: PropTypes.func.isRequired
+    onBack: PropTypes.func.isRequired,
+    currentUser: PropTypes.object
 }

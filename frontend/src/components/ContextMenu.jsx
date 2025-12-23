@@ -37,17 +37,18 @@ const ContextMenu = ({ x, y, onClose, onSelect }) => {
                 zIndex: 1000,
                 padding: '0.5rem',
                 minWidth: '200px',
-                background: '#1e293b',
-                border: '1px solid #475569'
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--glass-border)',
+                color: 'var(--text-primary)'
             }}
         >
-            <div style={{ padding: '0.5rem', fontWeight: 'bold', borderBottom: '1px solid #334155', marginBottom: '0.5rem' }}>
+            <div style={{ padding: '0.5rem', fontWeight: 'bold', borderBottom: '1px solid var(--glass-border)', marginBottom: '0.5rem' }}>
                 Set Status
             </div>
 
             <div style={{ display: 'flex', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.25rem' }}>AM</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>AM</div>
                     {options.map(opt => (
                         <div
                             key={`am-${opt.value}`}
@@ -59,9 +60,9 @@ const ContextMenu = ({ x, y, onClose, onSelect }) => {
                         </div>
                     ))}
                 </div>
-                <div style={{ width: '1px', background: '#334155' }}></div>
+                <div style={{ width: '1px', background: 'var(--glass-border)' }}></div>
                 <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.25rem' }}>PM</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>PM</div>
                     {options.map(opt => (
                         <div
                             key={`pm-${opt.value}`}
