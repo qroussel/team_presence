@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { apiFetch } from '../utils/api';
 import PropTypes from 'prop-types'
 import AddMemberModal from './AddMemberModal'
+import ConfirmationModal from './ConfirmationModal'
 
-export default function AdminPanel({ onBack }) {
+export default function AdminPanel({ onBack, currentUser }) {
     const [teams, setTeams] = useState([])
     const [users, setUsers] = useState([])
     const [selectedTeamId, setSelectedTeamId] = useState(null)
@@ -12,11 +14,27 @@ export default function AdminPanel({ onBack }) {
     const [teamMembers, setTeamMembers] = useState([])
     const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false)
 
-    // Delete Team State
-    const [teamToDelete, setTeamToDelete] = useState(null)
+    // Confirmation Modal State
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => { },
+        confirmText: 'Confirm',
+        confirmColor: 'var(--accent)'
+    })
 
     // Create Team State
     const [newTeamName, setNewTeamName] = useState('')
+
+    // Filter teams based on the role returned by the API
+    const visibleTeams = useMemo(() => {
+        if (!currentUser) return []
+        if (currentUser.role === 'Admin' || currentUser.role === 'admin') return teams
+        return teams.filter(t => t.role === 'Owner')
+    }, [teams, currentUser])
+
+
 
     useEffect(() => {
         fetchTeams()
@@ -33,8 +51,11 @@ export default function AdminPanel({ onBack }) {
 
     const fetchTeams = async () => {
         try {
-            const res = await fetch('/api/teams')
-            if (res.ok) setTeams(await res.json() || [])
+            const res = await apiFetch('/api/teams');
+            if (res.ok) {
+                const data = await res.json();
+                setTeams(data || []);
+            }
         } catch (e) {
             console.error(e)
         }
@@ -42,7 +63,7 @@ export default function AdminPanel({ onBack }) {
 
     const fetchUsers = async () => {
         try {
-            const res = await fetch('/api/users')
+            const res = await apiFetch('/api/users')
             if (res.ok) setUsers(await res.json() || [])
         } catch (e) {
             console.error(e)
@@ -51,7 +72,7 @@ export default function AdminPanel({ onBack }) {
 
     const fetchTeamMembers = async (teamId) => {
         try {
-            const res = await fetch(`/api/team_members?team_id=${teamId}`)
+            const res = await apiFetch(`/api/team_members?team_id=${teamId}`)
             if (res.ok) setTeamMembers(await res.json() || [])
         } catch (e) {
             console.error(e)
@@ -62,7 +83,7 @@ export default function AdminPanel({ onBack }) {
         e.preventDefault()
         if (!newTeamName) return
         try {
-            const res = await fetch('/api/teams', {
+            const res = await apiFetch('/api/teams', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: newTeamName })
@@ -74,27 +95,32 @@ export default function AdminPanel({ onBack }) {
         } catch (e) { console.error(e) }
     }
 
-    const confirmDeleteTeam = async () => {
-        if (!teamToDelete) return
-        try {
-            const res = await fetch(`/api/teams?id=${teamToDelete.id}`, { method: 'DELETE' })
-            if (res.ok) {
-                fetchTeams()
-                if (selectedTeamId === teamToDelete.id) setSelectedTeamId(null)
-            }
-        } catch (e) { console.error(e) }
-        setTeamToDelete(null)
+    const handleDeleteClick = (team) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Delete Team',
+            message: `Are you sure you want to delete ${team.name}? This action cannot be undone.`,
+            confirmText: 'Delete',
+            confirmColor: '#ef4444',
+            onConfirm: () => confirmDeleteTeam(team.id)
+        })
     }
 
-    const handleDeleteClick = (team) => {
-        setTeamToDelete(team)
+    const confirmDeleteTeam = async (teamId) => {
+        try {
+            const res = await apiFetch(`/api/teams?id=${teamId}`, { method: 'DELETE' })
+            if (res.ok) {
+                setSelectedTeamId(null)
+                fetchTeams()
+            }
+        } catch (e) { console.error(e) }
     }
 
     const handleAddMember = async (userId, productivity) => {
         if (!selectedTeamId) return
 
         try {
-            const res = await fetch('/api/team_members', {
+            const res = await apiFetch('/api/team_members', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -109,18 +135,30 @@ export default function AdminPanel({ onBack }) {
         } catch (e) { console.error(e) }
     }
 
-    const handleRemoveMember = async (userId) => {
+    const handleRemoveMemberClick = (userId) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Remove Member',
+            message: 'Are you sure you want to remove this member from the team?',
+            confirmText: 'Remove',
+            confirmColor: '#ef4444',
+            onConfirm: () => confirmRemoveMember(userId)
+        })
+    }
+
+    const confirmRemoveMember = async (userId) => {
         if (!selectedTeamId) return
         try {
-            const res = await fetch(`/api/team_members?team_id=${selectedTeamId}&user_id=${userId}`, { method: 'DELETE' })
+            const res = await apiFetch(`/api/team_members?team_id=${selectedTeamId}&user_id=${userId}`, { method: 'DELETE' })
             if (res.ok) fetchTeamMembers(selectedTeamId)
         } catch (e) { console.error(e) }
     }
 
+
     const handleUpdateProductivity = async (userId, newProd) => {
         try {
-            const res = await fetch('/api/team_members', {
-                method: 'POST',
+            const res = await apiFetch('/api/team_members', {
+                method: 'POST', // Repurposing ADD as upsert/update for productivity currently
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     team_id: selectedTeamId,
@@ -134,6 +172,61 @@ export default function AdminPanel({ onBack }) {
             }
         } catch (e) { console.error(e) }
     }
+
+    const performPromotion = async (userId) => {
+        try {
+            const res = await apiFetch(`/api/team_members?team_id=${selectedTeamId}&user_id=${userId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ role: 'Owner' })
+            });
+
+            if (res.ok) {
+                fetchTeamMembers(selectedTeamId);
+            }
+        } catch (e) {
+            console.error("Failed to promote member", e);
+        }
+    }
+
+    const handlePromoteMember = (userId) => {
+        if (!selectedTeamId) return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Promote to Team Owner',
+            message: 'Are you sure you want to promote this user to Team Owner?',
+            confirmText: 'Promote',
+            confirmColor: '#fbbf24', // Warning/Owner color
+            onConfirm: () => performPromotion(userId)
+        });
+    };
+
+    const performDemotion = async (userId) => {
+        try {
+            const res = await apiFetch(`/api/team_members?team_id=${selectedTeamId}&user_id=${userId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ role: 'Member' })
+            });
+
+            if (res.ok) {
+                fetchTeamMembers(selectedTeamId);
+            }
+        } catch (e) {
+            console.error("Failed to demote member", e);
+        }
+    }
+
+    const handleDemoteMember = (userId) => {
+        if (!selectedTeamId) return;
+        setConfirmModal({
+            isOpen: true,
+            title: 'Demote to Member',
+            message: 'Are you sure you want to demote this Team Owner to Member?',
+            confirmText: 'Demote',
+            confirmColor: 'var(--text-secondary)',
+            onConfirm: () => performDemotion(userId)
+        });
+    };
+
 
     return (
         <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
@@ -163,7 +256,7 @@ export default function AdminPanel({ onBack }) {
                     </form>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {teams.map(team => (
+                        {visibleTeams.map(team => (
                             <div
                                 key={team.id}
                                 style={{
@@ -242,10 +335,57 @@ export default function AdminPanel({ onBack }) {
                                             </div>
                                             <div>
                                                 <div>{tm.user_name || `User ${tm.user_id}`}</div>
+                                                {/* <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{tm.role}</div> */}
                                             </div>
                                         </div>
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                            {tm.role === 'Owner' ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                    <span style={{
+                                                        fontSize: '0.8rem',
+                                                        color: '#fbbf24',
+                                                        fontWeight: 'bold',
+                                                        border: '1px solid #fbbf24',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px'
+                                                    }}>
+                                                        Owner
+                                                    </span>
+                                                    <button
+                                                        onClick={() => handleDemoteMember(tm.user_id)}
+                                                        title="Demote to Member"
+                                                        style={{
+                                                            background: 'transparent',
+                                                            border: '1px solid var(--text-secondary)',
+                                                            color: 'var(--text-secondary)',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.8rem'
+                                                        }}
+                                                    >
+                                                        Demote
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handlePromoteMember(tm.user_id)}
+                                                    title="Promote to Team Owner"
+                                                    style={{
+                                                        background: 'transparent',
+                                                        border: '1px solid var(--text-secondary)',
+                                                        color: 'var(--text-secondary)',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.8rem'
+                                                    }}
+                                                >
+                                                    Promote
+                                                </button>
+                                            )}
+
                                             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Prod:</span>
                                                 <input
@@ -257,7 +397,7 @@ export default function AdminPanel({ onBack }) {
                                                 <span style={{ fontSize: '0.8rem' }}>%</span>
                                             </label>
                                             <button
-                                                onClick={() => handleRemoveMember(tm.user_id)}
+                                                onClick={() => handleRemoveMemberClick(tm.user_id)}
                                                 style={{ background: 'transparent', border: '1px solid var(--danger-bg, #ef4444)', color: 'var(--danger-bg, #ef4444)', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                             >
                                                 Remove
@@ -275,22 +415,16 @@ export default function AdminPanel({ onBack }) {
                 </div>
             </div>
 
-            {/* Delete Confirmation Modal */}
-            {teamToDelete && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200
-                }} onClick={() => setTeamToDelete(null)}>
-                    <div className="glass-panel" style={{ width: '400px', maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
-                        <h3 style={{ marginTop: 0 }}>Delete Team</h3>
-                        <p>Are you sure you want to delete <strong>{teamToDelete.name}</strong>? This action cannot be undone.</p>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
-                            <button onClick={() => setTeamToDelete(null)} style={{ background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-primary)', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
-                            <button onClick={confirmDeleteTeam} style={{ background: '#ef4444', border: 'none', color: 'white', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Delete</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Reusable Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                onConfirm={confirmModal.onConfirm}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText}
+                confirmColor={confirmModal.confirmColor}
+            />
 
             {/* Add Member Modal */}
             <AddMemberModal
@@ -307,5 +441,6 @@ export default function AdminPanel({ onBack }) {
 }
 
 AdminPanel.propTypes = {
-    onBack: PropTypes.func.isRequired
+    onBack: PropTypes.func.isRequired,
+    currentUser: PropTypes.object
 }

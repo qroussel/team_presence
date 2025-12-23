@@ -20,7 +20,9 @@ func NewServer(store *store.Store) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
+	// Wrap with middleware
+	handler := s.SimulatedAuthMiddleware(s.router.ServeHTTP)
+	handler(w, r)
 }
 
 func (s *Server) mountRoutes() {

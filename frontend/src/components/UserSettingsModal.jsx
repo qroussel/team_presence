@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../utils/api';
 import PropTypes from 'prop-types';
 
 const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
@@ -14,7 +15,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
         if (!user) return;
         setLoading(true);
         try {
-            const res = await fetch(`/api/team_members?user_id=${user.id}`);
+            const res = await apiFetch(`/api/team_members?user_id=${user.id}`);
             if (res.ok) {
                 const data = await res.json();
                 setUserTeams(data || []);
@@ -37,7 +38,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
 
     const handleUpdateProductivity = async (teamId, newProd) => {
         try {
-            const res = await fetch('/api/team_members', {
+            const res = await apiFetch('/api/team_members', {
                 method: 'POST', // Query handles upsert
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -57,7 +58,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
     const handleRemoveFromTeam = async (teamId) => {
         if (!window.confirm("Remove user from this team?")) return;
         try {
-            const res = await fetch(`/api/team_members?team_id=${teamId}&user_id=${user.id}`, {
+            const res = await apiFetch(`/api/team_members?team_id=${teamId}&user_id=${user.id}`, {
                 method: 'DELETE'
             });
             if (res.ok) {
@@ -71,7 +72,7 @@ const UserSettingsModal = ({ user, isOpen, onClose, onDeleteUser, teams }) => {
     const handleAddToTeam = async () => {
         if (!selectedTeamToAdd) return;
         try {
-            const res = await fetch('/api/team_members', {
+            const res = await apiFetch('/api/team_members', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

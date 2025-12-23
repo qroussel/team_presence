@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWeekend } from 'date-fns';
 import { isFrenchHoliday } from '../utils/holidays';
+import { apiFetch } from '../utils/api';
 import ContextMenu from './ContextMenu';
 
 const Calendar = ({ users, currentUser }) => {
+  // Guard against missing data to prevent crash
+  if (!currentUser || !users) {
+    return <div style={{ color: 'var(--text-secondary)', textAlign: 'center', marginTop: '2rem' }}>Loading calendar...</div>;
+  }
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [presenceData, setPresenceData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,7 +30,7 @@ const Calendar = ({ users, currentUser }) => {
       const end = format(endOfMonth(currentDate), 'yyyy-MM-dd');
 
       try {
-        const res = await fetch(`/api/presence?start=${start}&end=${end}`);
+        const res = await apiFetch(`/api/presence?start=${start}&end=${end}`);
         if (res.ok) {
           const data = await res.json();
           setPresenceData(data || []);
@@ -75,7 +81,7 @@ const Calendar = ({ users, currentUser }) => {
   const updatePresence = async (userId, date, statusAM, statusPM) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     try {
-      const res = await fetch('/api/presence', {
+      const res = await apiFetch('/api/presence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

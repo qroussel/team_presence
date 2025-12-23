@@ -222,7 +222,7 @@ func TestCreateTeamValidation(t *testing.T) {
 				teamName = teamName + " " + testutil.RandomString(5)
 			}
 
-			_, err := s.CreateTeam(ctx, teamName)
+			_, err := s.CreateTeam(ctx, CreateTeamParams{Name: teamName})
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -242,11 +242,11 @@ func TestCreateTeamUniqueName(t *testing.T) {
 	teamName := "Duplicate Team " + testutil.RandomString(5)
 
 	// Create first team
-	_, err := s.CreateTeam(ctx, teamName)
+	_, err := s.CreateTeam(ctx, CreateTeamParams{Name: teamName})
 	require.NoError(t, err)
 
 	// Try to create second team with same name
-	_, err = s.CreateTeam(ctx, teamName)
+	_, err = s.CreateTeam(ctx, CreateTeamParams{Name: teamName})
 	require.Error(t, err, "Should fail due to unique constraint on team name")
 	assert.Contains(t, err.Error(), "duplicate key value")
 }
@@ -298,7 +298,7 @@ func TestAddUserToTeamValidationSuccess(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			validTeam, err := s.CreateTeam(ctx, "Valid Team "+testutil.RandomString(5))
+			validTeam, err := s.CreateTeam(ctx, CreateTeamParams{Name: "Valid Team " + testutil.RandomString(5)})
 			require.NoError(t, err)
 
 			params := AddUserToTeamParams{
@@ -350,7 +350,7 @@ func TestAddUserToTeamValidationFailure(t *testing.T) {
 			}
 
 			if tt.teamID == 0 {
-				team, err := s.CreateTeam(ctx, "Valid Team "+testutil.RandomString(5))
+				team, err := s.CreateTeam(ctx, CreateTeamParams{Name: "Valid Team " + testutil.RandomString(5)})
 				require.NoError(t, err)
 				teamID = team.ID
 			} else {

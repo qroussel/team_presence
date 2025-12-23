@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -84,6 +86,10 @@ func (s *Store) DeleteUser(ctx context.Context, id int32) error {
 	return s.getQueries(ctx).DeleteUser(ctx, id)
 }
 
+func (s *Store) GetUserByID(ctx context.Context, id int32) (GetUserByIDRow, error) {
+	return s.getQueries(ctx).GetUserByID(ctx, id)
+}
+
 func (s *Store) UpsertPresence(ctx context.Context, arg UpsertPresenceParams) (UpsertPresenceRow, error) {
 	return s.getQueries(ctx).UpsertPresence(ctx, arg)
 }
@@ -92,16 +98,20 @@ func (s *Store) GetPresence(ctx context.Context, arg GetPresenceParams) ([]GetPr
 	return s.getQueries(ctx).GetPresence(ctx, arg)
 }
 
-func (s *Store) CreateTeam(ctx context.Context, name string) (CreateTeamRow, error) {
-	return s.getQueries(ctx).CreateTeam(ctx, name)
+func (s *Store) CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateTeamRow, error) {
+	return s.getQueries(ctx).CreateTeam(ctx, arg)
 }
 
-func (s *Store) GetTeams(ctx context.Context) ([]Team, error) {
+func (s *Store) GetTeams(ctx context.Context) ([]GetTeamsRow, error) {
 	return s.getQueries(ctx).GetTeams(ctx)
 }
 
 func (s *Store) DeleteTeam(ctx context.Context, id int32) error {
 	return s.getQueries(ctx).DeleteTeam(ctx, id)
+}
+
+func (s *Store) GetTeamByID(ctx context.Context, id int32) (GetTeamByIDRow, error) {
+	return s.getQueries(ctx).GetTeamByID(ctx, id)
 }
 
 func (s *Store) AddUserToTeam(ctx context.Context, arg AddUserToTeamParams) (AddUserToTeamRow, error) {
@@ -118,4 +128,76 @@ func (s *Store) RemoveUserFromTeam(ctx context.Context, arg RemoveUserFromTeamPa
 
 func (s *Store) GetUserTeams(ctx context.Context, userID int32) ([]GetUserTeamsRow, error) {
 	return s.getQueries(ctx).GetUserTeams(ctx, userID)
+}
+
+func (s *Store) UpdateTeamOwner(ctx context.Context, arg UpdateTeamOwnerParams) error {
+	return s.getQueries(ctx).UpdateTeamOwner(ctx, arg)
+}
+
+func (s *Store) UpdateTeamMemberRole(ctx context.Context, arg UpdateTeamMemberRoleParams) error {
+	return s.getQueries(ctx).UpdateTeamMemberRole(ctx, arg)
+}
+
+func (s *Store) SeedAdmin(ctx context.Context) error {
+	query := `INSERT INTO users (name, email, role) 
+              VALUES ('Admin User', 'admin@example.com', 'Admin') 
+              ON CONFLICT (email) DO UPDATE SET role = 'Admin';`
+	_, err := s.pool.Exec(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to seed admin: %w", err)
+	}
+	fmt.Println("Checked/Seeded Admin User (admin@example.com) with role 'Admin'")
+	return nil
+}
+
+// TeamWithRole is a custom struct for GetTeamsForUser
+type TeamWithRole struct {
+	ID        int32
+	Name      string
+	OwnerID   pgtype.Int4
+	CreatedAt time.Time
+	Role      string
+}
+
+// GetTeamsForUser returns teams where the user is a member (Owner or Member)
+func (s *Store) GetTeamsForUser(ctx context.Context, userID int32) ([]TeamWithRole, error) {
+	query := `
+		SELECT t.id, t.name, t.owner_id, t.created_at, tm.role
+		FROM teams t
+		JOIN team_members tm ON t.id = tm.team_id
+		WHERE tm.user_id = $1
+		ORDER BY t.name
+	`
+	// Check for transaction in context (for tests)
+	var rows pgx.Rows
+	var err error
+	if tx, ok := ctx.Value(TxContextKey).(pgx.Tx); ok {
+		rows, err = tx.Query(ctx, query, userID)
+	} else {
+		rows, err = s.pool.Query(ctx, query, userID)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []TeamWithRole
+	for rows.Next() {
+		var i TeamWithRole
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.OwnerID,
+			&i.CreatedAt,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

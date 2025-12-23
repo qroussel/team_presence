@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiFetch } from '../utils/api';
 
 export default function AddTeamModal({ isOpen, onClose, users, onTeamCreated }) {
     const [teamName, setTeamName] = useState('');
@@ -32,7 +33,7 @@ export default function AddTeamModal({ isOpen, onClose, users, onTeamCreated }) 
         setIsSubmitting(true);
         try {
             // 1. Create Team
-            const teamRes = await fetch('/api/teams', {
+            const teamRes = await apiFetch('/api/teams', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: teamName })

@@ -88,7 +88,7 @@ func TestTeamOperations(t *testing.T) {
 
 	// Create team using builder
 	builder := testutil.NewTeamBuilder()
-	createdTeam, err := s.CreateTeam(ctx, builder.Name())
+	createdTeam, err := s.CreateTeam(ctx, CreateTeamParams{Name: builder.Name()})
 	require.NoError(t, err)
 	assert.NotZero(t, createdTeam.ID)
 
@@ -96,7 +96,7 @@ func TestTeamOperations(t *testing.T) {
 		teams, err := s.GetTeams(ctx)
 		require.NoError(t, err)
 
-		found, ok := testutil.FindInSlice(teams, func(team Team) bool {
+		found, ok := testutil.FindInSlice(teams, func(team GetTeamsRow) bool {
 			return team.ID == createdTeam.ID
 		})
 		require.True(t, ok, "Created team should be found in GetTeams")
@@ -110,7 +110,7 @@ func TestTeamOperations(t *testing.T) {
 		teamsAfter, err := s.GetTeams(ctx)
 		require.NoError(t, err)
 
-		foundAfter := testutil.ContainsInSlice(teamsAfter, func(team Team) bool {
+		foundAfter := testutil.ContainsInSlice(teamsAfter, func(team GetTeamsRow) bool {
 			return team.ID == createdTeam.ID
 		})
 		assert.False(t, foundAfter, "Deleted team should not be found")
@@ -129,7 +129,7 @@ func TestTeamMemberOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	teamBuilder := testutil.NewTeamBuilder()
-	team, err := s.CreateTeam(ctx, teamBuilder.Name())
+	team, err := s.CreateTeam(ctx, CreateTeamParams{Name: teamBuilder.Name()})
 	require.NoError(t, err)
 
 	productivity := int32(85)
@@ -194,6 +194,61 @@ func TestTeamMemberOperations(t *testing.T) {
 		userTeamsAfter, err := s.GetUserTeams(ctx, user.ID)
 		require.NoError(t, err)
 		assert.Empty(t, userTeamsAfter)
+	})
+}
+
+func TestGetTeamsForUser(t *testing.T) {
+	t.Parallel()
+	s, ctx := newTestStoreWithTx(t)
+
+	// Create Users
+	u1, _ := s.CreateUser(ctx, CreateUserParams{Name: "User1", Email: "u1@test.com"})
+	u2, _ := s.CreateUser(ctx, CreateUserParams{Name: "User2", Email: "u2@test.com"})
+
+	// Create Teams
+	t1, _ := s.CreateTeam(ctx, CreateTeamParams{Name: "Team1", OwnerID: pgtype.Int4{Int32: u1.ID, Valid: true}})
+	t2, _ := s.CreateTeam(ctx, CreateTeamParams{Name: "Team2", OwnerID: pgtype.Int4{Int32: u2.ID, Valid: true}})
+
+	// Add memberships
+	// U1 owns T1
+	s.AddUserToTeam(ctx, AddUserToTeamParams{TeamID: t1.ID, UserID: u1.ID, Role: "Owner"})
+	// U1 is member of T2
+	s.AddUserToTeam(ctx, AddUserToTeamParams{TeamID: t2.ID, UserID: u1.ID, Role: "Member"})
+	// U2 owns T2
+	s.AddUserToTeam(ctx, AddUserToTeamParams{TeamID: t2.ID, UserID: u2.ID, Role: "Owner"})
+
+	t.Run("U1 sees T1 (Owner) and T2 (Member)", func(t *testing.T) {
+		teams, err := s.GetTeamsForUser(ctx, u1.ID)
+		require.NoError(t, err)
+		require.Len(t, teams, 2, "Should see 2 teams")
+
+		// Verify T1
+		var foundT1 bool
+		for _, team := range teams {
+			if team.ID == t1.ID {
+				assert.Equal(t, "Owner", team.Role)
+				foundT1 = true
+			}
+		}
+		assert.True(t, foundT1, "Should see Team1 as Owner")
+
+		// Verify T2
+		var foundT2 bool
+		for _, team := range teams {
+			if team.ID == t2.ID {
+				assert.Equal(t, "Member", team.Role)
+				foundT2 = true
+			}
+		}
+		assert.True(t, foundT2, "Should see Team2 as Member")
+	})
+
+	t.Run("U2 sees T2 only", func(t *testing.T) {
+		teams, err := s.GetTeamsForUser(ctx, u2.ID)
+		require.NoError(t, err)
+		require.Len(t, teams, 1, "Should see 1 team")
+		assert.Equal(t, t2.ID, teams[0].ID)
+		assert.Equal(t, "Owner", teams[0].Role)
 	})
 }
 

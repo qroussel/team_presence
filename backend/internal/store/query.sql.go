@@ -13,8 +13,8 @@ import (
 )
 
 const addUserToTeam = `-- name: AddUserToTeam :one
-INSERT INTO team_members (team_id, user_id, productivity)
-VALUES ($1, $2, $3)
+INSERT INTO team_members (team_id, user_id, productivity, role)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (team_id, user_id) DO UPDATE SET productivity = EXCLUDED.productivity
 RETURNING id, created_at
 `
@@ -23,6 +23,7 @@ type AddUserToTeamParams struct {
 	TeamID       int32       `json:"team_id"`
 	UserID       int32       `json:"user_id"`
 	Productivity pgtype.Int4 `json:"productivity"`
+	Role         string      `json:"role"`
 }
 
 type AddUserToTeamRow struct {
@@ -31,36 +32,48 @@ type AddUserToTeamRow struct {
 }
 
 func (q *Queries) AddUserToTeam(ctx context.Context, arg AddUserToTeamParams) (AddUserToTeamRow, error) {
-	row := q.db.QueryRow(ctx, addUserToTeam, arg.TeamID, arg.UserID, arg.Productivity)
+	row := q.db.QueryRow(ctx, addUserToTeam,
+		arg.TeamID,
+		arg.UserID,
+		arg.Productivity,
+		arg.Role,
+	)
 	var i AddUserToTeamRow
 	err := row.Scan(&i.ID, &i.CreatedAt)
 	return i, err
 }
 
 const createTeam = `-- name: CreateTeam :one
-INSERT INTO teams (name) VALUES ($1) RETURNING id, created_at
+INSERT INTO teams (name, owner_id) VALUES ($1, $2) RETURNING id, owner_id, created_at
 `
 
-type CreateTeamRow struct {
-	ID        int32     `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
+type CreateTeamParams struct {
+	Name    string      `json:"name"`
+	OwnerID pgtype.Int4 `json:"owner_id"`
 }
 
-func (q *Queries) CreateTeam(ctx context.Context, name string) (CreateTeamRow, error) {
-	row := q.db.QueryRow(ctx, createTeam, name)
+type CreateTeamRow struct {
+	ID        int32       `json:"id"`
+	OwnerID   pgtype.Int4 `json:"owner_id"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateTeamRow, error) {
+	row := q.db.QueryRow(ctx, createTeam, arg.Name, arg.OwnerID)
 	var i CreateTeamRow
-	err := row.Scan(&i.ID, &i.CreatedAt)
+	err := row.Scan(&i.ID, &i.OwnerID, &i.CreatedAt)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (name, email, avatar_url) VALUES ($1, $2, $3) RETURNING id, created_at
+INSERT INTO users (name, email, avatar_url, role) VALUES ($1, $2, $3, $4) RETURNING id, created_at
 `
 
 type CreateUserParams struct {
 	Name      string      `json:"name"`
 	Email     string      `json:"email"`
 	AvatarUrl pgtype.Text `json:"avatar_url"`
+	Role      string      `json:"role"`
 }
 
 type CreateUserRow struct {
@@ -69,7 +82,12 @@ type CreateUserRow struct {
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Name, arg.Email, arg.AvatarUrl)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Name,
+		arg.Email,
+		arg.AvatarUrl,
+		arg.Role,
+	)
 	var i CreateUserRow
 	err := row.Scan(&i.ID, &i.CreatedAt)
 	return i, err
@@ -140,8 +158,31 @@ func (q *Queries) GetPresence(ctx context.Context, arg GetPresenceParams) ([]Get
 	return items, nil
 }
 
+const getTeamByID = `-- name: GetTeamByID :one
+SELECT id, name, owner_id, created_at FROM teams WHERE id = $1
+`
+
+type GetTeamByIDRow struct {
+	ID        int32       `json:"id"`
+	Name      string      `json:"name"`
+	OwnerID   pgtype.Int4 `json:"owner_id"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+func (q *Queries) GetTeamByID(ctx context.Context, id int32) (GetTeamByIDRow, error) {
+	row := q.db.QueryRow(ctx, getTeamByID, id)
+	var i GetTeamByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getTeamMembers = `-- name: GetTeamMembers :many
-SELECT tm.id, tm.team_id, tm.user_id, tm.productivity, tm.created_at, u.name as user_name
+SELECT tm.id, tm.team_id, tm.user_id, tm.productivity, tm.role, tm.created_at, u.name as user_name
 FROM team_members tm
 JOIN users u ON tm.user_id = u.id
 WHERE tm.team_id = $1
@@ -152,6 +193,7 @@ type GetTeamMembersRow struct {
 	TeamID       int32       `json:"team_id"`
 	UserID       int32       `json:"user_id"`
 	Productivity pgtype.Int4 `json:"productivity"`
+	Role         string      `json:"role"`
 	CreatedAt    time.Time   `json:"created_at"`
 	UserName     string      `json:"user_name"`
 }
@@ -170,6 +212,7 @@ func (q *Queries) GetTeamMembers(ctx context.Context, teamID int32) ([]GetTeamMe
 			&i.TeamID,
 			&i.UserID,
 			&i.Productivity,
+			&i.Role,
 			&i.CreatedAt,
 			&i.UserName,
 		); err != nil {
@@ -184,19 +227,31 @@ func (q *Queries) GetTeamMembers(ctx context.Context, teamID int32) ([]GetTeamMe
 }
 
 const getTeams = `-- name: GetTeams :many
-SELECT id, name, created_at FROM teams ORDER BY name
+SELECT id, name, owner_id, created_at FROM teams ORDER BY name
 `
 
-func (q *Queries) GetTeams(ctx context.Context) ([]Team, error) {
+type GetTeamsRow struct {
+	ID        int32       `json:"id"`
+	Name      string      `json:"name"`
+	OwnerID   pgtype.Int4 `json:"owner_id"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+func (q *Queries) GetTeams(ctx context.Context) ([]GetTeamsRow, error) {
 	rows, err := q.db.Query(ctx, getTeams)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Team
+	var items []GetTeamsRow
 	for rows.Next() {
-		var i Team
-		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt); err != nil {
+		var i GetTeamsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.OwnerID,
+			&i.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -207,8 +262,35 @@ func (q *Queries) GetTeams(ctx context.Context) ([]Team, error) {
 	return items, nil
 }
 
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, name, email, COALESCE(avatar_url, '') as avatar_url, role, created_at FROM users WHERE id = $1
+`
+
+type GetUserByIDRow struct {
+	ID        int32     `json:"id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	AvatarUrl string    `json:"avatar_url"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, id int32) (GetUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i GetUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getUserTeams = `-- name: GetUserTeams :many
-SELECT tm.id, tm.team_id, tm.user_id, tm.productivity, tm.created_at, t.name as team_name
+SELECT tm.id, tm.team_id, tm.user_id, tm.productivity, tm.role, tm.created_at, t.name as team_name, t.owner_id
 FROM team_members tm
 JOIN teams t ON tm.team_id = t.id
 WHERE tm.user_id = $1
@@ -219,8 +301,10 @@ type GetUserTeamsRow struct {
 	TeamID       int32       `json:"team_id"`
 	UserID       int32       `json:"user_id"`
 	Productivity pgtype.Int4 `json:"productivity"`
+	Role         string      `json:"role"`
 	CreatedAt    time.Time   `json:"created_at"`
 	TeamName     string      `json:"team_name"`
+	OwnerID      pgtype.Int4 `json:"owner_id"`
 }
 
 func (q *Queries) GetUserTeams(ctx context.Context, userID int32) ([]GetUserTeamsRow, error) {
@@ -237,8 +321,10 @@ func (q *Queries) GetUserTeams(ctx context.Context, userID int32) ([]GetUserTeam
 			&i.TeamID,
 			&i.UserID,
 			&i.Productivity,
+			&i.Role,
 			&i.CreatedAt,
 			&i.TeamName,
+			&i.OwnerID,
 		); err != nil {
 			return nil, err
 		}
@@ -251,7 +337,7 @@ func (q *Queries) GetUserTeams(ctx context.Context, userID int32) ([]GetUserTeam
 }
 
 const getUsers = `-- name: GetUsers :many
-SELECT id, name, email, COALESCE(avatar_url, '') as avatar_url, created_at FROM users
+SELECT id, name, email, COALESCE(avatar_url, '') as avatar_url, role, created_at FROM users
 `
 
 type GetUsersRow struct {
@@ -259,6 +345,7 @@ type GetUsersRow struct {
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	AvatarUrl string    `json:"avatar_url"`
+	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -276,6 +363,7 @@ func (q *Queries) GetUsers(ctx context.Context) ([]GetUsersRow, error) {
 			&i.Name,
 			&i.Email,
 			&i.AvatarUrl,
+			&i.Role,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -299,6 +387,35 @@ type RemoveUserFromTeamParams struct {
 
 func (q *Queries) RemoveUserFromTeam(ctx context.Context, arg RemoveUserFromTeamParams) error {
 	_, err := q.db.Exec(ctx, removeUserFromTeam, arg.TeamID, arg.UserID)
+	return err
+}
+
+const updateTeamMemberRole = `-- name: UpdateTeamMemberRole :exec
+UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2
+`
+
+type UpdateTeamMemberRoleParams struct {
+	TeamID int32  `json:"team_id"`
+	UserID int32  `json:"user_id"`
+	Role   string `json:"role"`
+}
+
+func (q *Queries) UpdateTeamMemberRole(ctx context.Context, arg UpdateTeamMemberRoleParams) error {
+	_, err := q.db.Exec(ctx, updateTeamMemberRole, arg.TeamID, arg.UserID, arg.Role)
+	return err
+}
+
+const updateTeamOwner = `-- name: UpdateTeamOwner :exec
+UPDATE teams SET owner_id = $2 WHERE id = $1
+`
+
+type UpdateTeamOwnerParams struct {
+	ID      int32       `json:"id"`
+	OwnerID pgtype.Int4 `json:"owner_id"`
+}
+
+func (q *Queries) UpdateTeamOwner(ctx context.Context, arg UpdateTeamOwnerParams) error {
+	_, err := q.db.Exec(ctx, updateTeamOwner, arg.ID, arg.OwnerID)
 	return err
 }
 
